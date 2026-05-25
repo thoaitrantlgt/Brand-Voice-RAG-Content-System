@@ -1,0 +1,50 @@
+# AI Content OS — Backend Dependencies
+# Phase 1: Core AI Pipeline
+
+# === AI Framework ===
+crewai[tools]>=0.80.0
+crewai-tools>=0.20.0
+
+# === Backend ===
+fastapi>=0.115.0
+uvicorn[standard]>=0.32.0
+pydantic>=2.9.0
+pydantic-settings>=2.6.0
+python-multipart>=0.0.12      # FastAPI file upload
+
+# === Logging ===
+loguru>=0.7.2
+
+# === Tools (Phase 1) ===
+feedparser>=6.0.11            # RSS Reader
+tavily-python>=0.5.0          # Tavily Search
+
+# === RAG — LangChain (Phase 2) ===
+langchain>=0.3.0
+langchain-community>=0.3.0
+langchain-core>=0.3.0
+
+# === RAG — Document Loaders (Phase 2) ===
+pypdf>=4.3.0                  # PDF loader
+docx2txt>=0.8                 # DOCX loader
+unstructured>=0.15.0          # Markdown loader
+
+# === RAG — Vector DB (Phase 2) ===
+chromadb>=0.5.0
+
+# === RAG — Embeddings (Phase 2) ===
+sentence-transformers>=3.0.0  # HuggingFace local embeddings (default, free)
+# langchain-openai>=0.2.0     # Uncomment nếu dùng OpenAI embeddings
+# langchain-google-genai>=2.0.0  # Uncomment nếu dùng Google embeddings
+
+# === HuggingFace (Phase 2 — Local/API mode) ===
+huggingface-hub>=0.24.0
+transformers>=4.45.0        # Uncomment nếu chạy model local
+torch>=2.0.0                # Uncomment nếu có GPU
+accelerate
+# === Dev & Testing ===
+pytest>=8.3.0
+pytest-asyncio>=0.24.0
+httpx>=0.27.0                 # Test HTTP client cho FastAPI
+python-dotenv>=1.0.0
+litellm
