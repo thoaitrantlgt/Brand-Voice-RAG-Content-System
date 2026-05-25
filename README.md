@@ -1,35 +1,35 @@
 # AI Content Blog OS
 
-Ứng dụng tạo và quản lý bài viết blog bằng Multi-Agent AI. Dự án gồm backend FastAPI để xử lý AI/RAG/blog storage và frontend Next.js để thao tác dashboard, tạo bài, quản lý bài viết, upload tài liệu.
+AI Content Blog OS is a full-stack application for creating and managing blog posts with a Multi-Agent AI workflow. The backend uses FastAPI for AI orchestration, RAG, and blog storage. The frontend uses Next.js for the dashboard, article creation flow, blog management, and document upload.
 
-## Tính năng chính
+## Features
 
-- Dashboard hiển thị dữ liệu thật từ backend: số bài viết, bản nháp, bài đã xuất bản, tài liệu RAG và tình trạng hệ thống.
-- Tạo bài viết theo luồng: nhập từ khóa -> AI nghiên cứu web/tài liệu upload -> tạo draft outline -> người dùng feedback -> Writer + Editor viết bài hoàn chỉnh.
-- Upload tài liệu PDF/TXT/MD/DOCX vào Knowledge Hub để AI tham khảo khi lập draft hoặc viết bài.
-- Quản lý bài viết: xem, sửa, xóa, lưu nháp hoặc xuất bản.
-- Inline AI rewrite: chọn đoạn văn và yêu cầu AI viết lại theo feedback.
+- Dashboard powered by real backend data: blog counts, drafts, published posts, RAG documents, indexed chunks, and system health.
+- Blog creation flow: enter keywords -> AI researches web/uploaded documents -> generate a draft outline -> user feedback -> Writer + Editor agents create the final article.
+- Upload PDF/TXT/MD/DOCX documents into the Knowledge Hub so AI can reference them during planning and writing.
+- Blog management: view, edit, delete, save as draft, and publish.
+- Inline AI rewrite: select a paragraph and ask AI to rewrite it based on feedback.
 
-## Cấu trúc thư mục
+## Project Structure
 
 ```text
 .
 ├── backend/   # FastAPI, CrewAI, RAG, SQLite blog storage
 ├── frontend/  # Next.js, React, Tailwind CSS
-├── AGENTS.md  # Ghi chú vận hành repo cho coding agents
+├── AGENTS.md  # Repository operating notes for coding agents
 └── README.md
 ```
 
-Không có root task runner. Khi chạy lệnh, hãy vào đúng thư mục `backend/` hoặc `frontend/`.
+There is no root task runner. Run backend commands from `backend/` and frontend commands from `frontend/`.
 
-## Yêu cầu
+## Requirements
 
 - Python 3.12+
 - Node.js + npm
-- API key/model provider phù hợp với cấu hình backend
-- Tùy chọn: `SERPER_API_KEY` nếu muốn bật Web Search
+- A configured LLM provider or local OpenAI-compatible server
+- Optional: `SERPER_API_KEY` for Web Search
 
-## Chạy backend
+## Run The Backend
 
 ```powershell
 cd backend
@@ -39,24 +39,92 @@ copy .env.example .env
 .\.venv\Scripts\python.exe run.py
 ```
 
-Backend mặc định chạy tại:
+The backend runs at:
 
 ```text
 http://127.0.0.1:8000
 ```
 
-Các route chính:
+Main routes:
 
 - `GET /health`
-- `POST /api/v1/content/titles` - tạo draft outline từ từ khóa
-- `POST /api/v1/content/generate` - viết bài hoàn chỉnh từ draft đã duyệt
-- `POST /api/v1/content/rewrite` - viết lại đoạn được chọn
+- `POST /api/v1/content/titles` - generate a draft outline from keywords
+- `POST /api/v1/content/generate` - generate a complete article from an approved draft
+- `POST /api/v1/content/rewrite` - rewrite selected text
 - `GET/POST/PUT/DELETE /api/v1/blogs`
 - `GET/POST/DELETE /api/v1/documents`
 
-Lưu ý: backend đọc `.env` theo current working directory, nên hãy chạy lệnh từ thư mục `backend/`.
+Important: backend settings are loaded from `.env` in the current working directory, so run backend commands from `backend/`.
 
-## Chạy frontend
+## Set Up LM Studio As A Local API
+
+This project can use LM Studio as an OpenAI-compatible API server. In this mode, keep `AI_PROVIDER=openai` and point `OPENAI_API_BASE` to LM Studio's local server.
+
+### 1. Prepare LM Studio
+
+1. Install LM Studio.
+2. Download a chat/instruct model, for example `qwen3-1.7b` or any model your machine can run.
+3. Open the Developer or Local Server tab.
+4. Load the model.
+5. Start the OpenAI-compatible server.
+6. Keep the default port `1234`, which gives you:
+
+```text
+http://127.0.0.1:1234/v1
+```
+
+You can verify the server with:
+
+```powershell
+curl http://127.0.0.1:1234/v1/models
+```
+
+### 2. Configure `backend/.env`
+
+Use this configuration in `backend/.env`:
+
+```env
+RUN_MODE=cloud
+AI_PROVIDER=openai
+
+OPENAI_API_KEY=dummy_key_for_local_server
+OPENAI_API_BASE=http://127.0.0.1:1234/v1
+
+PLANNER_MODEL=qwen3-1.7b
+WRITER_MODEL=qwen3-1.7b
+EDITOR_MODEL=qwen3-1.7b
+
+DEBUG=false
+```
+
+Notes:
+
+- `RUN_MODE=cloud` is correct for LM Studio in this repo because the backend calls LM Studio through an OpenAI-compatible HTTP API.
+- `OPENAI_API_KEY` still needs any non-empty value because OpenAI-compatible clients usually require the field.
+- `PLANNER_MODEL`, `WRITER_MODEL`, and `EDITOR_MODEL` should match the model name returned by LM Studio from `/v1/models`.
+- If you change the LM Studio port, update `OPENAI_API_BASE`.
+- `DEBUG` must be a valid boolean: `true` or `false`.
+
+### 3. Run The App With LM Studio
+
+Recommended order:
+
+1. Open LM Studio and start the server.
+2. Run the backend from `backend/`:
+
+```powershell
+.\.venv\Scripts\python.exe run.py
+```
+
+3. Run the frontend from `frontend/`:
+
+```powershell
+npm run dev
+```
+
+When you create an article at `/create`, the backend will call the model currently loaded in LM Studio to plan drafts, write content, and rewrite text.
+
+## Run The Frontend
 
 ```powershell
 cd frontend
@@ -64,33 +132,33 @@ npm install
 npm run dev
 ```
 
-Frontend mặc định chạy tại:
+The frontend runs at:
 
 ```text
 http://127.0.0.1:3000
 ```
 
-Các trang chính:
+Main pages:
 
 - `/` - Dashboard
-- `/create` - Tạo bài viết
-- `/blogs` - Quản lý bài viết
-- `/rag` - Upload và tìm kiếm tài liệu
+- `/create` - Create a blog post
+- `/blogs` - Manage blog posts
+- `/rag` - Upload and search documents
 
-Frontend hiện gọi backend tại `http://127.0.0.1:8000/api/v1`.
+The frontend currently calls the backend at `http://127.0.0.1:8000/api/v1`.
 
-## Luồng tạo bài viết
+## Blog Creation Workflow
 
-1. Vào `/create`.
-2. Nhập từ khóa chính, có thể tách nhiều từ khóa bằng dấu phẩy.
-3. Bật Web Search nếu muốn AI cập nhật thông tin từ web.
-4. Planner Agent tìm thông tin từ web hoặc tài liệu đã upload trong Knowledge Hub.
-5. Hệ thống tạo một draft gồm tiêu đề, SEO title, đề mục và gạch đầu dòng.
-6. Người dùng chỉnh draft/outline.
-7. Writer + Editor Agent viết bài hoàn chỉnh.
-8. Người dùng có thể preview, chỉnh markdown, rewrite từng đoạn, lưu nháp hoặc xuất bản.
+1. Go to `/create`.
+2. Enter the main keywords. Multiple keywords can be separated with commas.
+3. Enable Web Search if you want AI to use updated web information.
+4. The Planner Agent searches the web or uploaded documents in the Knowledge Hub.
+5. The system creates one draft with a title, SEO title, headings, and bullet points.
+6. The user edits the draft/outline.
+7. Writer + Editor agents generate the complete article.
+8. The user can preview, edit Markdown, rewrite selected paragraphs, save as draft, or publish.
 
-## Kiểm thử
+## Testing
 
 Backend:
 
@@ -107,16 +175,16 @@ npm run lint
 npm run build
 ```
 
-Nếu PowerShell chặn `npm.ps1`, dùng:
+If PowerShell blocks `npm.ps1`, use:
 
 ```powershell
 npm.cmd run lint
 npm.cmd run build
 ```
 
-## Dữ liệu và file generated
+## Runtime Data And Generated Files
 
-Các thư mục/file runtime không nên commit:
+Do not commit runtime/generated files:
 
 - `backend/.venv/`
 - `backend/.pytest_cache/`
@@ -124,11 +192,11 @@ Các thư mục/file runtime không nên commit:
 - `frontend/node_modules/`
 - `frontend/.next/`
 
-SQLite blog storage và ChromaDB mặc định được tạo dưới `backend/data/`.
+SQLite blog storage and ChromaDB data are created under `backend/data/` by default.
 
-## Ghi chú cấu hình
+## Configuration Notes
 
-- Bắt đầu từ `backend/.env.example`, copy sang `backend/.env`.
-- `DEBUG` cần là boolean hợp lệ như `true` hoặc `false`.
-- Web Search cần `SERPER_API_KEY`.
-- RAG dùng ChromaDB và tài liệu upload từ trang `/rag`.
+- Start from `backend/.env.example`, then copy it to `backend/.env`.
+- `DEBUG` must be a valid boolean such as `true` or `false`.
+- Web Search requires `SERPER_API_KEY`.
+- RAG uses ChromaDB and documents uploaded from the `/rag` page.
