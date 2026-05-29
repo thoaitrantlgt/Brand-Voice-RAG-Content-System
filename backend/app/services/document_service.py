@@ -12,6 +12,7 @@ from app.core.exceptions import InvalidInputError, ToolExecutionError
 from app.core.interfaces import IDocumentProcessor, IVectorStore
 from app.core.logging import logger
 from app.schemas.document import (
+    DOCUMENT_PURPOSES,
     DocumentInfo,
     ListDocumentsResponse,
     SearchKnowledgeBaseResponse,
@@ -53,6 +54,7 @@ class DocumentService:
         self,
         file_path: Path,
         filename: str,
+        purpose: str = "knowledge",
     ) -> UploadDocumentResponse:
         """
         Nhận file đã upload → validate → chunk → index vào ChromaDB.
@@ -69,6 +71,13 @@ class DocumentService:
             ToolExecutionError: Nếu processing thất bại.
         """
         ext = Path(filename).suffix.lstrip(".").lower()
+        purpose = purpose.strip().lower()
+
+        if purpose not in DOCUMENT_PURPOSES:
+            raise InvalidInputError(
+                f"Document purpose '{purpose}' is not supported.",
+                {"allowed": sorted(DOCUMENT_PURPOSES), "received": purpose},
+            )
 
         # Validate extension
         if ext not in self._settings.ALLOWED_EXTENSIONS:
@@ -90,9 +99,10 @@ class DocumentService:
 
         document_id = str(uuid.uuid4())
         logger.info(
-            "Uploading document | filename={} document_id={}",
+            "Uploading document | filename={} document_id={} purpose={}",
             filename,
             document_id,
+            purpose,
         )
 
         # Process: load + chunk
@@ -100,7 +110,11 @@ class DocumentService:
 
         # Index vào ChromaDB
         texts = [chunk.text for chunk in processed.chunks]
-        metadatas = [chunk.metadata for chunk in processed.chunks]
+        metadatas = []
+        for chunk in processed.chunks:
+            metadata = dict(chunk.metadata)
+            metadata["purpose"] = purpose
+            metadatas.append(metadata)
         ids = [f"{document_id}_{i}" for i in range(processed.total_chunks)]
 
         self._store.add_documents(texts=texts, metadatas=metadatas, ids=ids)
@@ -112,12 +126,14 @@ class DocumentService:
             "total_chunks": processed.total_chunks,
             "extension": ext,
             "uploaded_at": datetime.now(timezone.utc).isoformat(),
+            "purpose": purpose,
         }
 
         return UploadDocumentResponse(
             document_id=document_id,
             filename=filename,
             total_chunks=processed.total_chunks,
+            purpose=purpose,
         )
 
     async def list_documents(self) -> ListDocumentsResponse:

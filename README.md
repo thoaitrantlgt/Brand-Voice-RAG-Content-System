@@ -7,6 +7,9 @@ AI Content Blog OS is a full-stack application for creating and managing blog po
 - Dashboard powered by real backend data: blog counts, drafts, published posts, RAG documents, indexed chunks, and system health.
 - Blog creation flow: enter keywords -> AI researches web/uploaded documents -> generate a draft outline -> user feedback -> Writer + Editor agents create the final article.
 - Upload PDF/TXT/MD/DOCX documents into the Knowledge Hub so AI can reference them during planning and writing.
+- Train a Brand Voice Profile from existing high-quality blog documents, then use it as a hard writing constraint for future content.
+- Evaluate generated drafts against the active brand voice before publishing.
+- Export SFT and DPO seed datasets for later supervised fine-tuning or preference optimization.
 - Blog management: view, edit, delete, save as draft, and publish.
 - Inline AI rewrite: select a paragraph and ask AI to rewrite it based on feedback.
 
@@ -53,6 +56,9 @@ Main routes:
 - `POST /api/v1/content/rewrite` - rewrite selected text
 - `GET/POST/PUT/DELETE /api/v1/blogs`
 - `GET/POST/DELETE /api/v1/documents`
+- `POST /api/v1/documents/brand-voice/train` - build a Brand Voice Profile from indexed documents
+- `GET /api/v1/documents/brand-voice/profile` - fetch the active Brand Voice Profile
+- `POST /api/v1/documents/brand-voice/evaluate` - score content against the active Brand Voice Profile
 
 Important: backend settings are loaded from `.env` in the current working directory, so run backend commands from `backend/`.
 
@@ -187,6 +193,109 @@ How it is enforced:
 
 This combines prompt engineering with deterministic code checks, which is safer than relying only on the LLM to remember every rule.
 
+## Brand Voice Training
+
+The Knowledge Hub can now train a reusable Brand Voice Profile from your previous high-quality content. This follows the workflow described in Search Engine Land's guide to training in-house LLMs on brand voice:
+
+```text
+Upload best content -> Extract brand patterns -> Build profile -> Index profile into RAG -> Generate/evaluate content
+```
+
+Recommended source data:
+
+- Use 20-30 of your strongest blog posts or brand-approved documents.
+- Prefer complete articles with intro, body sections, examples, and conclusion intact.
+- Choose content that performed well or best represents the company's voice.
+- Remove outdated, weak, duplicated, or off-brand examples before training.
+
+When uploading documents, choose a document purpose:
+
+- `knowledge`: source material for RAG while writing, such as product docs, reports, research, or customer insights.
+- `brand_voice`: approved writing samples used only for Brand Voice Training.
+- `both`: material that is both factually useful and a strong example of the company's voice.
+
+Brand Voice Training only uses documents marked `brand_voice` or `both`. This keeps technical references or product PDFs from contaminating the tone profile.
+
+### Train From The UI
+
+1. Start the backend and frontend.
+2. Go to `/rag`.
+3. Upload your best blog documents into the Knowledge Hub.
+4. Mark tone samples as `Brand Voice` or `Both`.
+5. Click `Train Brand Voice`.
+6. The profile is saved, indexed into ChromaDB, and automatically used by future Writer/Editor prompts.
+
+### Train From The API
+
+```powershell
+curl -X POST http://127.0.0.1:8000/api/v1/documents/brand-voice/train `
+  -H "Content-Type: application/json" `
+  -d '{
+    "company_name": "Your Company",
+    "document_ids": [],
+    "min_documents": 20,
+    "max_documents": 30,
+    "target_audience": "Marketing managers and business leaders",
+    "brand_values": ["clear", "practical", "trustworthy"],
+    "channels": ["blog", "email", "social", "support", "ads"]
+  }'
+```
+
+Notes:
+
+- `document_ids: []` means "use all indexed documents marked `brand_voice` or `both`."
+- If fewer than `min_documents` are available, training still runs but returns a warning.
+- The LLM extraction step has a deterministic fallback, so the pipeline can still produce a starter profile if the LLM call fails.
+
+### What The Profile Contains
+
+The generated Brand Voice Profile includes:
+
+- Tone profile: primary tone, secondary tone traits, and description.
+- Vocabulary: repeated terms, preferred phrases, forbidden terms, and replacements.
+- Syntax: sentence rhythm, average sentence length, and writing rules.
+- Presentation rules: heading style, list style, chart intro style, and article flow.
+- Strategic context: target audience, brand values, interaction style, and message architecture.
+- Channel guidance: blog, email, social, support, and ads voice adjustments.
+- Prompt templates for common content types.
+- 10 calibration prompts for testing whether the system stays on-brand.
+- Governance checklist and RACI-style ownership notes for human review.
+- Training method recommendation: prompt engineering, RAG, PEFT, or full fine-tuning based on available data volume.
+
+Generated files:
+
+```text
+backend/config/brand_voice_profile.json
+backend/data/brand_voice/brand_voice_sft.jsonl
+backend/data/brand_voice/brand_voice_dpo_seed.jsonl
+```
+
+The SFT dataset uses the approved source articles as assistant responses. The DPO file is a seed preference dataset and should be reviewed by a human before any real DPO training run.
+
+### Evaluate Drafts Before Publishing
+
+Use the evaluation endpoint to check whether a generated draft matches the active Brand Voice Profile:
+
+```powershell
+curl -X POST http://127.0.0.1:8000/api/v1/documents/brand-voice/evaluate `
+  -H "Content-Type: application/json" `
+  -d '{
+    "channel": "blog",
+    "content_type": "blog_post",
+    "content": "# Example Title\n\n## Section\n\nYour generated draft here..."
+  }'
+```
+
+The response includes:
+
+- `overall_score`
+- `dimension_scores` for tone, vocabulary, readability, structure, and channel fit
+- voice violations
+- improvement recommendations
+- human reviewer checklist
+
+Use this score as a pre-publish guardrail, not as a replacement for editorial review.
+
 ## Testing
 
 Backend:
@@ -222,6 +331,7 @@ Do not commit runtime/generated files:
 - `frontend/.next/`
 
 SQLite blog storage and ChromaDB data are created under `backend/data/` by default.
+Brand Voice SFT/DPO datasets are also generated under `backend/data/brand_voice/` by default.
 
 ## Configuration Notes
 
@@ -229,3 +339,6 @@ SQLite blog storage and ChromaDB data are created under `backend/data/` by defau
 - `DEBUG` must be a valid boolean such as `true` or `false`.
 - Web Search requires `SERPER_API_KEY`.
 - RAG uses ChromaDB and documents uploaded from the `/rag` page.
+- Brand Voice Profile defaults:
+  - `BRAND_VOICE_PROFILE_PATH=./config/brand_voice_profile.json`
+  - `BRAND_VOICE_DATASET_DIR=./data/brand_voice`

@@ -136,6 +136,9 @@ class BrandVoiceService:
                 continue
             if meta.get("content_type") == "brand_voice_profile":
                 continue
+            purpose = str(meta.get("purpose") or "knowledge")
+            if not selected_ids and purpose not in ("brand_voice", "both"):
+                continue
             if selected_ids and doc_id not in selected_ids:
                 continue
             grouped[doc_id].append(chunk)

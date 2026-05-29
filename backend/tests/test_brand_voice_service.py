@@ -19,6 +19,7 @@ async def test_train_brand_voice_creates_profile_dataset_and_indexes(tmp_path):
                 "document_id": "doc-1",
                 "filename": "one.md",
                 "chunk_index": "0",
+                "purpose": "brand_voice",
             },
         },
         {
@@ -28,6 +29,7 @@ async def test_train_brand_voice_creates_profile_dataset_and_indexes(tmp_path):
                 "document_id": "doc-2",
                 "filename": "two.md",
                 "chunk_index": "0",
+                "purpose": "both",
             },
         },
     ]

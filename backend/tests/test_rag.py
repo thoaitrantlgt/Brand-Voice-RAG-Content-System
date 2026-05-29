@@ -103,8 +103,27 @@ class TestDocumentService:
 
         assert result.filename == "test.pdf"
         assert result.total_chunks == 3
+        assert result.purpose == "knowledge"
         assert result.document_id is not None
         mock_vector_store.add_documents.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_upload_and_index_sets_document_purpose(
+        self,
+        mock_processor,
+        mock_vector_store,
+        mock_settings,
+        tmp_path,
+    ):
+        test_file = tmp_path / "brand.md"
+        test_file.write_text("# Brand voice", encoding="utf-8")
+
+        service = DocumentService(mock_processor, mock_vector_store, mock_settings)
+        result = await service.upload_and_index(test_file, "brand.md", purpose="brand_voice")
+
+        assert result.purpose == "brand_voice"
+        metadatas = mock_vector_store.add_documents.call_args.kwargs["metadatas"]
+        assert all(meta["purpose"] == "brand_voice" for meta in metadatas)
 
     @pytest.mark.asyncio
     async def test_invalid_extension_raises(

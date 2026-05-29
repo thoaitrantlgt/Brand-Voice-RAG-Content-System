@@ -12,7 +12,7 @@ import shutil
 from pathlib import Path
 from functools import lru_cache
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 
 from app.core.config import Settings, get_settings
 from app.core.exceptions import InvalidInputError, ToolExecutionError
@@ -75,6 +75,10 @@ def get_brand_voice_service() -> BrandVoiceService:
 )
 async def upload_document(
     file: UploadFile = File(..., description="File cần upload (PDF, TXT, MD, DOCX)."),
+    purpose: str = Form(
+        "knowledge",
+        description="Document purpose: knowledge, brand_voice, or both.",
+    ),
     service: DocumentService = Depends(get_document_service),
     settings: Settings = Depends(get_settings),
 ) -> UploadDocumentResponse:
@@ -93,6 +97,7 @@ async def upload_document(
         result = await service.upload_and_index(
             file_path=temp_path,
             filename=file.filename or "unknown",
+            purpose=purpose,
         )
         return result
 

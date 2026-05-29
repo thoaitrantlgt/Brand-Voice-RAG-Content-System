@@ -7,6 +7,9 @@ from datetime import datetime
 from pydantic import BaseModel, Field
 
 
+DOCUMENT_PURPOSES = {"knowledge", "brand_voice", "both"}
+
+
 # ===== Response Schemas =====
 
 class DocumentInfo(BaseModel):
@@ -16,6 +19,7 @@ class DocumentInfo(BaseModel):
     total_chunks: int
     extension: str
     uploaded_at: str
+    purpose: str = Field(default="knowledge", description="knowledge, brand_voice, or both")
 
 
 class UploadDocumentResponse(BaseModel):
@@ -23,6 +27,7 @@ class UploadDocumentResponse(BaseModel):
     document_id: str = Field(description="ID duy nhất của tài liệu vừa upload.")
     filename: str
     total_chunks: int = Field(description="Số chunks đã được index vào ChromaDB.")
+    purpose: str = Field(default="knowledge", description="knowledge, brand_voice, or both")
     message: str = "Tài liệu đã được upload và index thành công."
     status: str = "success"
 
