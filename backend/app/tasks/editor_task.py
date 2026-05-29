@@ -1,6 +1,5 @@
 """
-tasks/editor_task.py — Editor Task Definition
-SRP: Editor chỉ proofread và giữ nguyên cấu trúc JSON từ Writer.
+tasks/editor_task.py - Editor Task Definition.
 """
 from crewai import Agent, Task
 
@@ -9,10 +8,7 @@ from app.core.logging import logger
 
 
 class EditorTask(ITask):
-    """
-    Task yêu cầu Editor Agent kiểm tra lỗi ngữ pháp và SEO.
-    Nhận context từ WriterTask, trả về JSON với cùng cấu trúc.
-    """
+    """Ask the Editor Agent to refine the Writer output before deterministic checks."""
 
     def __init__(self, context_tasks: list[Task] | None = None) -> None:
         self._context_tasks = context_tasks or []
@@ -24,12 +20,14 @@ class EditorTask(ITask):
             description=(
                 "Review the blog post drafted by the Writer Agent.\n\n"
                 "Keywords: **{keywords}**\n\n"
-                "Your Tasks:\n"
+                "Corporate Style Guide:\n{style_guide_instructions}\n\n"
+                "Your tasks:\n"
                 "1. Refine the content for clarity, engagement, and accuracy.\n"
-                "2. Ensure the tone is consistent and professional.\n"
-                "3. Optimize headings (H1, H2, H3) and structure for readability.\n"
-                "4. Fix any grammatical or spelling errors.\n"
-                "5. Maintain the original markdown format.\n\n"
+                "2. Ensure the tone is consistent, professional, formal, and direct.\n"
+                "3. Apply the corporate terminology rules and avoid forbidden terms.\n"
+                "4. Optimize headings (H1, H2, H3) and structure for readability.\n"
+                "5. Fix grammatical or spelling errors.\n"
+                "6. Maintain the original Markdown format.\n\n"
                 "OUTPUT FORMAT:\n"
                 "Return the complete, refined blog post in Markdown format. Start with the # H1 heading. "
                 "Do NOT return JSON."

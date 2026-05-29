@@ -44,6 +44,11 @@ class DocumentService:
         # In-memory metadata store (Phase 3: thay bằng SQLite/PostgreSQL)
         self._doc_metadata: dict[str, dict] = {}
 
+    @property
+    def vector_store(self) -> IVectorStore:
+        """Expose the shared vector store for workflows that operate on indexed content."""
+        return self._store
+
     async def upload_and_index(
         self,
         file_path: Path,

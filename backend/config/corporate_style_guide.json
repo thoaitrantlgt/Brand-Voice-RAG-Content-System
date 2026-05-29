@@ -1,0 +1,43 @@
+{
+  "company_name": "Công ty X",
+  "dictionary": {
+    "allowed_terms": [
+      "AI",
+      "trí tuệ nhân tạo",
+      "tài liệu tham khảo",
+      "bản nháp",
+      "dàn ý",
+      "bài viết",
+      "khách hàng",
+      "giá trị kinh doanh",
+      "quy trình tự động hóa"
+    ],
+    "forbidden_replacements": {
+      "rẻ tiền": "tối ưu chi phí",
+      "điên rồ": "đáng chú ý",
+      "thần kỳ": "hiệu quả",
+      "ma thuật": "quy trình tự động hóa",
+      "hack": "phương pháp",
+      "chắc chắn 100%": "được thiết kế để hỗ trợ",
+      "đỉnh nhất": "phù hợp",
+      "vô đối": "nổi bật",
+      "không cần suy nghĩ": "lựa chọn rõ ràng",
+      "cam kết tuyệt đối": "hướng tới mục tiêu",
+      "bùng nổ": "tăng trưởng mạnh"
+    }
+  },
+  "style_rules": {
+    "tone": "trang trọng, trực tiếp, chuyên nghiệp",
+    "expertise_level": "chuyên nghiệp, phù hợp với độc giả kinh doanh",
+    "max_sentence_words": 28,
+    "no_jargon": true,
+    "writing_principles": [
+      "Viết câu ngắn gọn, rõ ý.",
+      "Tránh phóng đại hoặc hứa hẹn tuyệt đối.",
+      "Ưu tiên ngôn ngữ thực tế, phù hợp môi trường doanh nghiệp.",
+      "Giải thích thuật ngữ kỹ thuật bằng cách dễ hiểu.",
+      "Tiêu đề phụ cần dễ quét và phản ánh đúng nội dung.",
+      "Không dùng giọng văn giật gân, sáo rỗng hoặc quá quảng cáo."
+    ]
+  }
+}

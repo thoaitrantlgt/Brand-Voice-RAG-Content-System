@@ -158,6 +158,35 @@ The frontend currently calls the backend at `http://127.0.0.1:8000/api/v1`.
 7. Writer + Editor agents generate the complete article.
 8. The user can preview, edit Markdown, rewrite selected paragraphs, save as draft, or publish.
 
+## Corporate Style Guide
+
+The project includes an enterprise-style content guardrail system. The source of truth is:
+
+```text
+backend/config/corporate_style_guide.json
+```
+
+It defines:
+
+- Allowed terms that the model should prefer.
+- Forbidden terms and deterministic replacements.
+- Style rules such as tone, expertise level, maximum sentence length, and writing principles.
+
+Backend configuration:
+
+```env
+STYLE_GUIDE_PATH=./config/corporate_style_guide.json
+```
+
+How it is enforced:
+
+1. Pre-generation: the Writer and Editor tasks receive the corporate style guide in their prompts.
+2. Post-generation: backend code scans the final Markdown and automatically replaces forbidden terms.
+3. The API returns `style_report`, including style score, replacements, remaining forbidden terms, and sentence warnings.
+4. The `/create` page shows a Corporate Style panel after content generation.
+
+This combines prompt engineering with deterministic code checks, which is safer than relying only on the LLM to remember every rule.
+
 ## Testing
 
 Backend:

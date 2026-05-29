@@ -1,6 +1,5 @@
 """
-tasks/writer_task.py — Writer Task Definition
-SRP: Chỉ định nghĩa nhiệm vụ viết bài cho Writer Agent.
+tasks/writer_task.py - Writer Task Definition.
 """
 from crewai import Agent, Task
 
@@ -9,9 +8,7 @@ from app.core.logging import logger
 
 
 class WriterTask(ITask):
-    """
-    Task yêu cầu Writer Agent viết bài blog đầy đủ dựa trên tiêu đề và outline.
-    """
+    """Ask the Writer Agent to create a full blog post from title and outline."""
 
     def __init__(self, context_tasks: list[Task] | None = None) -> None:
         self._context_tasks = context_tasks or []
@@ -22,16 +19,20 @@ class WriterTask(ITask):
         return Task(
             description=(
                 "/nothink\n"
-                "Viết bài blog cho tiêu đề: **{selected_title}**\n"
-                "Từ khóa: **{keywords}**\n"
+                "Write a blog post for this title: **{selected_title}**\n"
+                "Keywords: **{keywords}**\n"
                 "Outline: {outline}\n\n"
-                "Nhiệm vụ: Chỉ viết nội dung bài blog bằng Markdown, bắt đầu bằng '# {selected_title}'.\n"
-                "- Viết bài hoàn chỉnh bằng tiếng Việt.\n"
-                "- KHÔNG trả về JSON, chỉ trả về nội dung bài viết.\n"
-                "- Các phần: H2, H3 rõ ràng.\n"
+                "Corporate Style Guide:\n{style_guide_instructions}\n\n"
+                "Task requirements:\n"
+                "- Return only the blog content in Markdown, starting with '# {selected_title}'.\n"
+                "- Write the full article in Vietnamese.\n"
+                "- Follow the corporate style guide strictly.\n"
+                "- Do not use forbidden words; use the required replacements.\n"
+                "- Do NOT return JSON.\n"
+                "- Use clear H2 and H3 sections.\n"
             ),
             expected_output=(
-                "Nội dung bài viết blog đầy đủ định dạng Markdown, bắt đầu bằng thẻ H1."
+                "A complete Vietnamese blog post in Markdown format, starting with an H1 heading."
             ),
             agent=agent,
             context=self._context_tasks,

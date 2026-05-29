@@ -94,6 +94,11 @@ class Settings(BaseSettings):
     MAX_UPLOAD_SIZE_MB: int = 50
     ALLOWED_EXTENSIONS: list[str] = ["pdf", "txt", "md", "docx"]
 
+    # === Corporate Style Guide ===
+    STYLE_GUIDE_PATH: str = "./config/corporate_style_guide.json"
+    BRAND_VOICE_PROFILE_PATH: str = "./config/brand_voice_profile.json"
+    BRAND_VOICE_DATASET_DIR: str = "./data/brand_voice"
+
     # === Server ===
     HOST: str = "0.0.0.0"
     PORT: int = 8000

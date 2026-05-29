@@ -22,10 +22,15 @@ from app.rag.vector_store import ChromaVectorStore
 from app.schemas.document import (
     DeleteDocumentResponse,
     ListDocumentsResponse,
+    BrandVoiceEvaluateRequest,
+    BrandVoiceEvaluateResponse,
     SearchKnowledgeBaseRequest,
     SearchKnowledgeBaseResponse,
+    TrainBrandVoiceRequest,
+    BrandVoiceProfileResponse,
     UploadDocumentResponse,
 )
+from app.services.brand_voice_service import BrandVoiceService
 from app.services.document_service import DocumentService
 
 router = APIRouter(prefix="/documents", tags=["Knowledge Hub (RAG)"])
@@ -50,6 +55,12 @@ def _get_document_service() -> DocumentService:
 
 def get_document_service() -> DocumentService:
     return _get_document_service()
+
+
+def get_brand_voice_service() -> BrandVoiceService:
+    settings = get_settings()
+    vector_store = _get_document_service().vector_store
+    return BrandVoiceService(vector_store=vector_store, settings=settings)
 
 
 @router.post(
@@ -148,3 +159,72 @@ async def search_knowledge_base(
         top_k=request.top_k,
         document_id=request.document_id,
     )
+
+
+@router.post(
+    "/brand-voice/train",
+    response_model=BrandVoiceProfileResponse,
+    summary="Train brand voice profile from existing blog documents",
+    description=(
+        "Analyze 20-30 high-quality indexed blog documents, extract tone/vocabulary/"
+        "syntax/presentation rules, write an SFT JSONL dataset, and index the profile "
+        "back into the Knowledge Hub for RAG."
+    ),
+)
+async def train_brand_voice(
+    request: TrainBrandVoiceRequest,
+    service: BrandVoiceService = Depends(get_brand_voice_service),
+) -> BrandVoiceProfileResponse:
+    logger.info("POST /documents/brand-voice/train | selected_docs={}", len(request.document_ids))
+
+    try:
+        return await service.train(request)
+    except InvalidInputError as e:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={"error": e.message, "details": e.details},
+        )
+    except ToolExecutionError as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"error": e.message, "details": e.details},
+        )
+
+
+@router.get(
+    "/brand-voice/profile",
+    response_model=BrandVoiceProfileResponse,
+    summary="Get active brand voice profile",
+)
+async def get_brand_voice_profile(
+    service: BrandVoiceService = Depends(get_brand_voice_service),
+) -> BrandVoiceProfileResponse:
+    try:
+        return await service.get_active_profile()
+    except InvalidInputError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"error": e.message, "details": e.details},
+        )
+
+
+@router.post(
+    "/brand-voice/evaluate",
+    response_model=BrandVoiceEvaluateResponse,
+    summary="Evaluate content against active brand voice profile",
+    description=(
+        "Score generated content before publishing. Returns a voice deviation score, "
+        "violations, recommendations, and a human reviewer checklist."
+    ),
+)
+async def evaluate_brand_voice(
+    request: BrandVoiceEvaluateRequest,
+    service: BrandVoiceService = Depends(get_brand_voice_service),
+) -> BrandVoiceEvaluateResponse:
+    try:
+        return await service.evaluate(request)
+    except InvalidInputError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"error": e.message, "details": e.details},
+        )

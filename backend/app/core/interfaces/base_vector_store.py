@@ -51,6 +51,20 @@ class IVectorStore(ABC):
         ...
 
     @abstractmethod
+    def get_documents(
+        self,
+        where: dict[str, Any] | None = None,
+        limit: int | None = None,
+    ) -> list[dict[str, Any]]:
+        """
+        Return raw stored chunks for service-level workflows such as brand voice training.
+
+        Returns:
+            List dict containing 'id', 'text', and 'metadata'.
+        """
+        ...
+
+    @abstractmethod
     def delete_document(self, document_id: str) -> int:
         """
         Xóa tất cả chunk thuộc về một tài liệu.

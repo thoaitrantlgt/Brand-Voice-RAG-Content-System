@@ -122,6 +122,32 @@ class ChromaVectorStore(IVectorStore):
 
         return output
 
+    def get_documents(
+        self,
+        where: dict[str, Any] | None = None,
+        limit: int | None = None,
+    ) -> list[dict[str, Any]]:
+        """Return raw chunks from the collection for higher-level workflows."""
+        kwargs: dict[str, Any] = {"include": ["documents", "metadatas"]}
+        if where:
+            kwargs["where"] = where
+        if limit:
+            kwargs["limit"] = limit
+
+        results = self._collection.get(**kwargs)
+        ids = results.get("ids", [])
+        documents = results.get("documents", [])
+        metadatas = results.get("metadatas", [])
+
+        output = []
+        for chunk_id, text, meta in zip(ids, documents, metadatas):
+            output.append({
+                "id": chunk_id,
+                "text": text,
+                "metadata": meta or {},
+            })
+        return output
+
     def delete_document(self, document_id: str) -> int:
         """Xóa tất cả chunk của một tài liệu theo document_id."""
         logger.info("Deleting document from ChromaDB | document_id={}", document_id)
