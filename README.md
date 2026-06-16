@@ -204,37 +204,37 @@ flowchart LR
     F --> G[(brand_voice_reviews)]
 ```
 
-### 4. Trích Xuất Đặc Trưng Từ Blog Cũ
+### 4. Feature Extraction From Existing Blogs
 
-Đây là phần biến các blog đã viết trước đây thành một Brand Voice Profile có thể dùng lại. Dữ liệu đầu vào nên là các bài đã được duyệt, thể hiện đúng giọng thương hiệu, không phải mọi tài liệu trong Knowledge Hub.
+This is the data-processing step that turns previously approved blog posts into a reusable Brand Voice Profile. The input should be curated, on-brand writing samples, not every document in the Knowledge Hub.
 
 ```mermaid
 flowchart TB
-    A[Upload blog cũ: PDF/TXT/MD/DOCX] --> B[Mark purpose = brand_voice hoặc both]
+    A[Upload existing blogs: PDF/TXT/MD/DOCX] --> B[Mark purpose = brand_voice or both]
     B --> C[LangChain loader]
     C --> D[Chunking + metadata document_id]
-    D --> E[Index vào ChromaDB]
+    D --> E[Index into ChromaDB]
     E --> F[Load source chunks]
-    F --> G[Group chunks theo document_id]
-    G --> H[Ghép lại thành full blog]
+    F --> G[Group chunks by document_id]
+    G --> H[Reconstruct full blog posts]
     H --> I[LLM extraction]
     H --> J[Deterministic fallback]
     I --> K[Brand Voice Profile]
     J --> K
     K --> L[StyleGuide prompt constraints]
     K --> M[SFT/DPO seed datasets]
-    K --> N[Index profile ngược lại vào ChromaDB]
+    K --> N[Index profile back into ChromaDB]
 ```
 
-Pipeline chi tiết:
+Detailed pipeline:
 
-1. Upload tài liệu mẫu ở `/rag` và chọn `Brand Voice` hoặc `Both`.
-2. `DocumentService` validate file, gắn `purpose`, rồi đưa sang document processor.
-3. `LangChainDocumentProcessor` đọc file bằng loader tương ứng và chia chunk bằng `RecursiveCharacterTextSplitter`.
-4. `ChromaVectorStore` lưu chunks vào collection `knowledge_hub`, mỗi chunk có metadata như `document_id`, `filename`, `chunk_index`, `purpose`.
-5. Khi gọi `/brand-voice/train`, `BrandVoiceService` chỉ lấy documents có `purpose = brand_voice` hoặc `both`.
-6. Service group chunks theo `document_id`, sort theo `chunk_index`, rồi ghép lại thành từng full blog.
-7. LLM extraction agent đọc các blog mẫu và rút ra:
+1. Upload source samples from `/rag` and choose `Brand Voice` or `Both`.
+2. `DocumentService` validates the file, attaches the selected `purpose`, and passes it to the document processor.
+3. `LangChainDocumentProcessor` loads the file with the matching loader and splits it with `RecursiveCharacterTextSplitter`.
+4. `ChromaVectorStore` stores chunks in the `knowledge_hub` collection. Each chunk keeps metadata such as `document_id`, `filename`, `chunk_index`, and `purpose`.
+5. When `/brand-voice/train` runs, `BrandVoiceService` only selects documents with `purpose = brand_voice` or `both`.
+6. The service groups chunks by `document_id`, sorts them by `chunk_index`, and reconstructs each full blog post.
+7. The LLM extraction agent analyzes the reconstructed blog posts and extracts:
    - `brand_identity`: mission, vision, positioning, traits, differentiators.
    - `audience_personas`: persona, priorities, tone adjustment, decision criteria.
    - `tone`: primary tone, secondary tone, description.
@@ -242,15 +242,15 @@ Pipeline chi tiết:
    - `syntax`: average sentence length, sentence style, syntax rules.
    - `presentation`: heading style, list style, article structure.
    - `do_dont_examples`, examples, rubrics.
-8. Nếu LLM lỗi, hệ thống dùng fallback deterministic:
-   - regex tokenization để lấy từ/cụm từ,
-   - `Counter` để tìm repeated terms,
-   - regex sentence split để tính average sentence length,
-   - lấy representative sentences làm examples,
-   - tạo starter profile với tone/rubrics mặc định.
-9. Profile được ghi ra `backend/config/brand_voice_profile.json`, sinh thêm SFT/DPO seed dataset, rồi index profile Markdown trở lại ChromaDB để Writer/Editor có thể retrieve khi cần.
+8. If the LLM extraction fails, the system uses a deterministic fallback:
+   - regex tokenization to extract words and terms,
+   - `Counter` to identify repeated terms,
+   - regex sentence splitting to estimate average sentence length,
+   - representative sentences as examples,
+   - a starter tone/rubric profile.
+9. The generated profile is written to `backend/config/brand_voice_profile.json`, SFT/DPO seed datasets are exported, and the profile Markdown is indexed back into ChromaDB so Writer/Editor agents can retrieve it later.
 
-Nói ngắn gọn:
+In short:
 
 ```text
 Old approved blogs
