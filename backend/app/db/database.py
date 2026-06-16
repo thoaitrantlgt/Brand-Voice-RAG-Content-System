@@ -30,6 +30,24 @@ def init_db():
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS brand_voice_reviews (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                profile_id TEXT NOT NULL,
+                blog_id INTEGER,
+                channel TEXT NOT NULL,
+                content_type TEXT NOT NULL,
+                persona_name TEXT,
+                content_preview TEXT NOT NULL,
+                automated_score INTEGER NOT NULL,
+                evaluation_json TEXT NOT NULL,
+                human_score INTEGER,
+                human_notes TEXT,
+                approved INTEGER DEFAULT 0,
+                reviewer TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
         conn.commit()
 
 def get_db() -> Generator[sqlite3.Connection, None, None]:

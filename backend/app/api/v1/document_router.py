@@ -9,6 +9,7 @@ Endpoints:
   POST   /documents/search   — Semantic search trong Knowledge Hub
 """
 import shutil
+import sqlite3
 from pathlib import Path
 from functools import lru_cache
 
@@ -17,13 +18,18 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, s
 from app.core.config import Settings, get_settings
 from app.core.exceptions import InvalidInputError, ToolExecutionError
 from app.core.logging import logger
+from app.db.database import get_db
 from app.rag.document_processor import LangChainDocumentProcessor
 from app.rag.vector_store import ChromaVectorStore
+from app.repositories.brand_voice_review_repository import BrandVoiceReviewRepository
 from app.schemas.document import (
     DeleteDocumentResponse,
     ListDocumentsResponse,
     BrandVoiceEvaluateRequest,
     BrandVoiceEvaluateResponse,
+    BrandVoiceReviewCreate,
+    BrandVoiceReviewListResponse,
+    BrandVoiceReviewResponse,
     SearchKnowledgeBaseRequest,
     SearchKnowledgeBaseResponse,
     TrainBrandVoiceRequest,
@@ -61,6 +67,12 @@ def get_brand_voice_service() -> BrandVoiceService:
     settings = get_settings()
     vector_store = _get_document_service().vector_store
     return BrandVoiceService(vector_store=vector_store, settings=settings)
+
+
+def get_brand_voice_review_repo(
+    conn: sqlite3.Connection = Depends(get_db),
+) -> BrandVoiceReviewRepository:
+    return BrandVoiceReviewRepository(conn)
 
 
 @router.post(
@@ -142,6 +154,11 @@ async def delete_document(
     except InvalidInputError as e:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
+            detail={"error": e.message, "details": e.details},
+        )
+    except ToolExecutionError as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail={"error": e.message, "details": e.details},
         )
 
@@ -233,3 +250,59 @@ async def evaluate_brand_voice(
             status_code=status.HTTP_404_NOT_FOUND,
             detail={"error": e.message, "details": e.details},
         )
+
+
+@router.post(
+    "/brand-voice/reviews",
+    response_model=BrandVoiceReviewResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Store a human brand voice review",
+    description=(
+        "Runs automated brand voice evaluation, stores the evaluation snapshot, "
+        "and records human notes/approval for feedback-loop governance."
+    ),
+)
+async def create_brand_voice_review(
+    request: BrandVoiceReviewCreate,
+    service: BrandVoiceService = Depends(get_brand_voice_service),
+    repo: BrandVoiceReviewRepository = Depends(get_brand_voice_review_repo),
+) -> BrandVoiceReviewResponse:
+    try:
+        evaluation = await service.evaluate(
+            BrandVoiceEvaluateRequest(
+                content=request.content,
+                channel=request.channel,
+                content_type=request.content_type,
+                persona_name=request.persona_name,
+                use_llm_judge=request.use_llm_judge,
+            )
+        )
+        review_id = repo.create(request, evaluation)
+        saved = repo.get_by_id(review_id)
+        if saved is None:
+            raise ToolExecutionError("Brand voice review was not saved.", {"review_id": review_id})
+        return saved
+    except InvalidInputError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"error": e.message, "details": e.details},
+        )
+    except ToolExecutionError as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"error": e.message, "details": e.details},
+        )
+
+
+@router.get(
+    "/brand-voice/reviews",
+    response_model=BrandVoiceReviewListResponse,
+    summary="List stored brand voice reviews",
+)
+async def list_brand_voice_reviews(
+    profile_id: str | None = None,
+    limit: int = 50,
+    repo: BrandVoiceReviewRepository = Depends(get_brand_voice_review_repo),
+) -> BrandVoiceReviewListResponse:
+    reviews = repo.list_all(profile_id=profile_id, limit=limit)
+    return BrandVoiceReviewListResponse(reviews=reviews, total_reviews=len(reviews))

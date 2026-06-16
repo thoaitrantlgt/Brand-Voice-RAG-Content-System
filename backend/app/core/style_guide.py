@@ -117,10 +117,15 @@ class StyleGuide:
         examples = profile.get("examples", [])
         rubrics = profile.get("rubrics", [])
         channel_guidelines = profile.get("channel_guidelines", {})
+        brand_identity = profile.get("brand_identity", {})
+        audience_personas = profile.get("audience_personas", [])
+        do_dont = profile.get("do_dont_examples", {})
 
         lines = [
             "",
             "Learned Brand Voice Profile (hard constraints):",
+            f"- Brand identity: {json.dumps(brand_identity, ensure_ascii=False)}",
+            f"- Audience personas: {json.dumps(audience_personas, ensure_ascii=False)}",
             f"- Tone profile: {json.dumps(profile.get('tone', {}), ensure_ascii=False)}",
             f"- Syntax profile: {json.dumps(syntax, ensure_ascii=False)}",
             f"- Presentation profile: {json.dumps(presentation, ensure_ascii=False)}",
@@ -128,6 +133,8 @@ class StyleGuide:
             f"- Channel guidance: {json.dumps(channel_guidelines, ensure_ascii=False)}",
             f"- Preferred vocabulary: {', '.join(vocabulary.get('preferred_phrases', [])[:30]) or 'None detected'}.",
             f"- Repeated terminology to prefer: {', '.join(vocabulary.get('repeated_terms', [])[:50]) or 'None detected'}.",
+            f"- Do examples: {json.dumps(do_dont.get('do', []), ensure_ascii=False)}",
+            f"- Don't examples: {json.dumps(do_dont.get('dont', []), ensure_ascii=False)}",
             "- Brand voice rubrics:",
         ]
         lines.extend(f"  - {item}" for item in rubrics[:12])

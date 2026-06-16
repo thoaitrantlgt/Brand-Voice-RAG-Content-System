@@ -106,8 +106,24 @@ class BrandVoiceService:
             request.content,
             profile,
             request.channel,
+            request.persona_name,
         )
-        overall = round(sum(scores.values()) / max(1, len(scores)))
+        heuristic_overall = round(sum(scores.values()) / max(1, len(scores)))
+        llm_judge = None
+        evaluation_method = "heuristic"
+        overall = heuristic_overall
+
+        if request.use_llm_judge:
+            llm_judge = self._judge_with_llm(request.content, profile, request.channel, request.persona_name)
+            if llm_judge:
+                llm_score = int(llm_judge.get("overall_score", heuristic_overall))
+                overall = round((heuristic_overall + llm_score) / 2)
+                scores["llm_judge"] = max(0, min(100, llm_score))
+                violations.extend(str(item) for item in llm_judge.get("violations", []) if item)
+                recommendations.extend(str(item) for item in llm_judge.get("recommendations", []) if item)
+                evaluation_method = "heuristic_plus_llm_judge"
+            else:
+                recommendations.append("LLM judge was requested but unavailable; heuristic evaluation was used.")
 
         return BrandVoiceEvaluateResponse(
             profile_id=profile.get("profile_id", PROFILE_DOCUMENT_ID),
@@ -115,6 +131,8 @@ class BrandVoiceService:
             content_type=request.content_type,
             overall_score=overall,
             dimension_scores=scores,
+            llm_judge=llm_judge,
+            evaluation_method=evaluation_method,
             violations=violations,
             recommendations=recommendations,
             reviewer_checklist=profile.get("governance", {}).get("reviewer_checklist", []),
@@ -187,10 +205,13 @@ class BrandVoiceService:
             f"Company: {company_name}\n\n"
             "Return only valid JSON with this schema:\n"
             "{\n"
+            '  "brand_identity": {"mission": "", "vision": "", "positioning": "", "personality_traits": [], "differentiators": []},\n'
+            '  "audience_personas": [{"name": "", "priorities": [], "tone_adjustment": "", "decision_criteria": []}],\n'
             '  "tone": {"primary": "", "secondary": [], "description": ""},\n'
             '  "vocabulary": {"repeated_terms": [], "preferred_phrases": [], "forbidden_terms": [], "replacements": {}},\n'
             '  "syntax": {"sentence_style": "", "average_sentence_words": 0, "rules": []},\n'
             '  "presentation": {"heading_style": "", "list_style": "", "chart_intro_style": "", "rules": []},\n'
+            '  "do_dont_examples": {"do": [], "dont": []},\n'
             '  "examples": [{"category": "", "text": "", "source": ""}],\n'
             '  "rubrics": []\n'
             "}\n\n"
@@ -254,6 +275,25 @@ class BrandVoiceService:
                 "chart_intro_style": "Introduce charts with a short insight before the visual.",
                 "rules": ["Keep introduction, body, and conclusion structure intact."],
             },
+            "brand_identity": {
+                "mission": "Help readers make practical decisions with clear expert guidance.",
+                "vision": "Become a trusted source for useful, accurate, and actionable content.",
+                "positioning": "Expert advisor that explains complex topics without hype.",
+                "personality_traits": ["clear", "practical", "credible"],
+                "differentiators": ["plain-language explanations", "evidence-led recommendations"],
+            },
+            "audience_personas": [
+                {
+                    "name": "Business reader",
+                    "priorities": ["clarity", "business impact", "next steps"],
+                    "tone_adjustment": "Practical and concise.",
+                    "decision_criteria": ["specificity", "accuracy", "usefulness"],
+                }
+            ],
+            "do_dont_examples": {
+                "do": ["Explain the point plainly before adding nuance."],
+                "dont": ["Do not rely on generic hype or unsupported superlatives."],
+            },
             "examples": examples,
             "rubrics": [
                 "Match the learned tone before optimizing for SEO.",
@@ -275,9 +315,11 @@ class BrandVoiceService:
         repeated_terms = vocabulary.get("repeated_terms", [])[:50]
         preferred_phrases = vocabulary.get("preferred_phrases", [])[:30]
         rubrics = analysis.get("rubrics", [])
+        brand_identity = self._build_brand_identity(analysis, company_name, request)
+        audience_personas = self._build_audience_personas(analysis, request)
         return {
             "profile_id": profile_id,
-            "version": "2.0",
+            "version": "2.1",
             "company_name": company_name,
             "created_at": datetime.now(timezone.utc).isoformat(),
             "source_document_count": source_count,
@@ -285,9 +327,14 @@ class BrandVoiceService:
                 {"document_id": doc["document_id"], "filename": doc["filename"]}
                 for doc in documents
             ],
+            "brand_identity": brand_identity,
+            "audience_personas": audience_personas,
             "strategic_context": {
                 "target_audience": request.target_audience or "Primary blog readers and prospective customers.",
                 "brand_values": request.brand_values,
+                "mission": brand_identity.get("mission"),
+                "vision": brand_identity.get("vision"),
+                "positioning": brand_identity.get("positioning"),
                 "interaction_style": "Expert advisor with clear, practical guidance.",
                 "message_architecture": [
                     "Lead with the reader's problem.",
@@ -299,6 +346,7 @@ class BrandVoiceService:
             "vocabulary": vocabulary,
             "syntax": analysis.get("syntax", {}),
             "presentation": analysis.get("presentation", {}),
+            "do_dont_examples": analysis.get("do_dont_examples", {}),
             "examples": analysis.get("examples", []),
             "rubrics": rubrics,
             "channel_guidelines": self._build_channel_guidelines(request.channels),
@@ -316,8 +364,60 @@ class BrandVoiceService:
                 "max_sentence_words": max(12, int(float(analysis.get("syntax", {}).get("average_sentence_words") or 28) * 1.4)),
                 "writing_principles": rubrics,
                 "preferred_phrases": preferred_phrases,
+                "personality_traits": brand_identity.get("personality_traits", []),
             },
         }
+
+    def _build_brand_identity(
+        self,
+        analysis: dict[str, Any],
+        company_name: str,
+        request: TrainBrandVoiceRequest,
+    ) -> dict[str, Any]:
+        extracted = dict(analysis.get("brand_identity") or {})
+        explicit = request.brand_identity.model_dump(exclude_none=True) if request.brand_identity else {}
+
+        identity = {
+            "company_name": company_name,
+            "mission": "Help customers make confident decisions with practical expertise.",
+            "vision": "Become a trusted voice in the market.",
+            "positioning": "Expert advisor with clear, grounded communication.",
+            "value_proposition": "Clear guidance that turns complex topics into practical next steps.",
+            "brand_archetype": "advisor",
+            "personality_traits": ["clear", "credible", "practical"],
+            "differentiators": ["plain-language expertise", "actionable recommendations"],
+            "taboo_topics": [],
+        }
+        identity.update({k: v for k, v in extracted.items() if v})
+        identity.update({k: v for k, v in explicit.items() if v not in (None, [], "")})
+        identity["personality_traits"] = self._dedupe_strings(identity.get("personality_traits", []))[:12]
+        identity["differentiators"] = self._dedupe_strings(identity.get("differentiators", []))[:12]
+        identity["taboo_topics"] = self._dedupe_strings(identity.get("taboo_topics", []))[:12]
+        return identity
+
+    def _build_audience_personas(
+        self,
+        analysis: dict[str, Any],
+        request: TrainBrandVoiceRequest,
+    ) -> list[dict[str, Any]]:
+        if request.audience_personas:
+            return [persona.model_dump(exclude_none=True) for persona in request.audience_personas]
+
+        extracted = analysis.get("audience_personas") or []
+        if isinstance(extracted, list) and extracted:
+            return [persona for persona in extracted[:8] if isinstance(persona, dict)]
+
+        return [
+            {
+                "name": "Primary blog reader",
+                "segment": "prospective_customer",
+                "priorities": ["clarity", "credibility", "business impact"],
+                "knowledge_level": "business-professional",
+                "tone_adjustment": "Helpful, direct, and practical.",
+                "preferred_channels": ["blog", "email"],
+                "decision_criteria": ["specific examples", "clear next steps", "credible claims"],
+            }
+        ]
 
     def _build_channel_guidelines(self, channels: list[str]) -> dict[str, dict[str, Any]]:
         defaults = {
@@ -449,6 +549,7 @@ class BrandVoiceService:
         presentation = profile.get("presentation", {})
         syntax = profile.get("syntax", {})
         examples = profile.get("examples", [])
+        do_dont = profile.get("do_dont_examples", {})
 
         lines = [
             f"# Brand Voice Profile: {profile.get('company_name', 'Company X')}",
@@ -457,6 +558,12 @@ class BrandVoiceService:
             f"Profile ID: {profile.get('profile_id', PROFILE_DOCUMENT_ID)}",
             f"Source documents: {profile.get('source_document_count', 0)}",
             f"Recommended method: {profile.get('training_method_recommendation', {}).get('recommended_method', 'unknown')}",
+            "",
+            "## Brand Identity",
+            json.dumps(profile.get("brand_identity", {}), ensure_ascii=False, indent=2),
+            "",
+            "## Audience Personas",
+            json.dumps(profile.get("audience_personas", []), ensure_ascii=False, indent=2),
             "",
             "## Strategic Context",
             json.dumps(profile.get("strategic_context", {}), ensure_ascii=False, indent=2),
@@ -475,11 +582,19 @@ class BrandVoiceService:
             "## Presentation",
             json.dumps(presentation, ensure_ascii=False, indent=2),
             "",
+            "## Do / Don't Examples",
+            "Do:",
+        ]
+        lines.extend(f"- {item}" for item in do_dont.get("do", []))
+        lines.extend(["", "Don't:"])
+        lines.extend(f"- {item}" for item in do_dont.get("dont", []))
+        lines.extend([
+            "",
             "## Channel Guidelines",
             json.dumps(profile.get("channel_guidelines", {}), ensure_ascii=False, indent=2),
             "",
             "## Calibration Tests",
-        ]
+        ])
         lines.extend(
             f"- {item.get('id')}: {item.get('prompt')}"
             for item in profile.get("calibration_tests", [])
@@ -583,16 +698,24 @@ class BrandVoiceService:
         content: str,
         profile: dict[str, Any],
         channel: str,
+        persona_name: str | None = None,
     ) -> tuple[dict[str, int], list[str], list[str]]:
         vocabulary = profile.get("vocabulary", {})
         style_rules = profile.get("style_rules", {})
         channel_guidelines = profile.get("channel_guidelines", {}).get(channel, {})
+        brand_identity = profile.get("brand_identity", {})
+        persona = self._select_persona(profile.get("audience_personas", []), persona_name)
         forbidden_terms = list(vocabulary.get("forbidden_terms", []))
         forbidden_terms.extend(profile.get("dictionary", {}).get("forbidden_replacements", {}).keys())
         preferred_terms = [
             term for term in vocabulary.get("preferred_phrases", []) + vocabulary.get("repeated_terms", [])
             if isinstance(term, str) and len(term) > 2
         ][:40]
+        identity_terms = self._dedupe_strings(
+            brand_identity.get("personality_traits", [])
+            + brand_identity.get("differentiators", [])
+            + [brand_identity.get("positioning", ""), brand_identity.get("value_proposition", "")]
+        )[:20]
 
         lowered = content.lower()
         violations = []
@@ -647,6 +770,21 @@ class BrandVoiceService:
                 channel_score += 5
         channel_score = min(100, channel_score)
 
+        identity_hits = sorted({term for term in identity_terms if term and term.lower() in lowered})
+        identity_score = 85 if not identity_terms else min(100, 60 + len(identity_hits) * 8)
+        if identity_terms and not identity_hits:
+            recommendations.append("Reflect the configured brand identity more explicitly.")
+
+        persona_score = 85
+        if persona:
+            persona_terms = self._dedupe_strings(
+                persona.get("priorities", []) + persona.get("decision_criteria", [])
+            )
+            persona_hits = sorted({term for term in persona_terms if term.lower() in lowered})
+            persona_score = 90 if not persona_terms else min(100, 55 + len(persona_hits) * 9)
+            if persona_terms and len(persona_hits) < min(2, len(persona_terms)):
+                recommendations.append(f"Adapt the piece more clearly for persona: {persona.get('name')}.")
+
         if not violations:
             recommendations.append("Save this as a potential gold-standard output if human review agrees.")
         else:
@@ -658,8 +796,101 @@ class BrandVoiceService:
             "readability": max(0, min(100, readability_score)),
             "structure": max(0, min(100, structure_score)),
             "channel_fit": max(0, min(100, channel_score)),
+            "identity_alignment": max(0, min(100, identity_score)),
+            "persona_fit": max(0, min(100, persona_score)),
         }
         return scores, violations, recommendations
+
+    def _select_persona(
+        self,
+        personas: list[dict[str, Any]],
+        persona_name: str | None,
+    ) -> dict[str, Any] | None:
+        if not personas:
+            return None
+        if not persona_name:
+            return personas[0]
+        wanted = persona_name.lower()
+        return next(
+            (persona for persona in personas if str(persona.get("name", "")).lower() == wanted),
+            personas[0],
+        )
+
+    @staticmethod
+    def _dedupe_strings(values: list[Any]) -> list[str]:
+        seen = set()
+        output = []
+        for value in values:
+            text = str(value).strip()
+            key = text.lower()
+            if text and key not in seen:
+                seen.add(key)
+                output.append(text)
+        return output
+
+    def _judge_with_llm(
+        self,
+        content: str,
+        profile: dict[str, Any],
+        channel: str,
+        persona_name: str | None,
+    ) -> dict[str, Any] | None:
+        prompt = self._build_judge_prompt(content, profile, channel, persona_name)
+        try:
+            llm = LLMFactory(self._settings).create(self._settings.EDITOR_MODEL)
+            response = llm.call([{"role": "user", "content": prompt}])
+            data = self._parse_json(response)
+            scores = data.get("dimension_scores", {})
+            if not isinstance(scores, dict):
+                scores = {}
+            overall = int(data.get("overall_score") or 0)
+            if overall <= 0 and scores:
+                overall = round(sum(int(v) for v in scores.values()) / max(1, len(scores)))
+            data["overall_score"] = max(0, min(100, overall))
+            data["dimension_scores"] = {
+                str(key): max(0, min(100, int(value)))
+                for key, value in scores.items()
+                if str(value).isdigit() or isinstance(value, int)
+            }
+            data["violations"] = data.get("violations", [])
+            data["recommendations"] = data.get("recommendations", [])
+            return data
+        except Exception as e:
+            logger.warning("Brand voice LLM judge failed; using heuristic only | {}", e)
+            return None
+
+    def _build_judge_prompt(
+        self,
+        content: str,
+        profile: dict[str, Any],
+        channel: str,
+        persona_name: str | None,
+    ) -> str:
+        profile_summary = {
+            "brand_identity": profile.get("brand_identity", {}),
+            "audience_personas": profile.get("audience_personas", []),
+            "tone": profile.get("tone", {}),
+            "vocabulary": profile.get("vocabulary", {}),
+            "syntax": profile.get("syntax", {}),
+            "presentation": profile.get("presentation", {}),
+            "rubrics": profile.get("rubrics", []),
+            "channel_guidelines": profile.get("channel_guidelines", {}).get(channel, {}),
+        }
+        return (
+            "You are a strict brand voice evaluator. Score the content against the profile.\n"
+            f"Channel: {channel}\n"
+            f"Persona: {persona_name or 'default'}\n\n"
+            "Return only valid JSON with this schema:\n"
+            "{\n"
+            '  "overall_score": 0,\n'
+            '  "dimension_scores": {"identity_alignment": 0, "persona_fit": 0, "tone_alignment": 0, "vocabulary": 0, "structure": 0},\n'
+            '  "violations": [],\n'
+            '  "recommendations": [],\n'
+            '  "rationale": ""\n'
+            "}\n\n"
+            f"Brand Voice Profile:\n{json.dumps(profile_summary, ensure_ascii=False)[:6000]}\n\n"
+            f"Content to evaluate:\n{content[:8000]}"
+        )
 
     def _index_profile(self, profile_markdown: str, profile: dict[str, Any]) -> int:
         try:

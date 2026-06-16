@@ -34,6 +34,29 @@ class UploadDocumentResponse(BaseModel):
 
 # ===== Brand Voice Training Schemas =====
 
+class BrandIdentity(BaseModel):
+    """Structured brand strategy that the voice profile should preserve."""
+    mission: str | None = Field(default=None, description="What the brand exists to do.")
+    vision: str | None = Field(default=None, description="Long-term market or customer ambition.")
+    positioning: str | None = Field(default=None, description="How the brand should be positioned.")
+    value_proposition: str | None = Field(default=None, description="Primary promise to the audience.")
+    brand_archetype: str | None = Field(default=None, description="Optional archetype, e.g. advisor, builder.")
+    personality_traits: list[str] = Field(default=[], description="Precise traits, not generic labels.")
+    differentiators: list[str] = Field(default=[], description="Specific advantages the voice should reinforce.")
+    taboo_topics: list[str] = Field(default=[], description="Topics or claims the brand should avoid.")
+
+
+class AudiencePersona(BaseModel):
+    """Audience-specific voice variation for brand voice governance."""
+    name: str = Field(description="Persona name, e.g. Technical evaluator.")
+    segment: str | None = Field(default=None, description="Market segment or role.")
+    priorities: list[str] = Field(default=[], description="What this persona cares about.")
+    knowledge_level: str | None = Field(default=None, description="novice, business, technical, executive, etc.")
+    tone_adjustment: str | None = Field(default=None, description="How tone should shift for this persona.")
+    preferred_channels: list[str] = Field(default=[], description="Channels where this persona is common.")
+    decision_criteria: list[str] = Field(default=[], description="Signals this persona uses to evaluate content.")
+
+
 class TrainBrandVoiceRequest(BaseModel):
     """Request to extract a brand voice profile from existing blog documents."""
     company_name: str | None = Field(
@@ -64,6 +87,14 @@ class TrainBrandVoiceRequest(BaseModel):
         default=[],
         description="Optional values or principles the brand should communicate.",
     )
+    brand_identity: BrandIdentity | None = Field(
+        default=None,
+        description="Explicit mission, positioning, personality, and differentiation rules.",
+    )
+    audience_personas: list[AudiencePersona] = Field(
+        default=[],
+        description="Persona-specific voice variations for channels and stakeholders.",
+    )
     channels: list[str] = Field(
         default=["blog", "email", "social", "support", "ads"],
         description="Channels that need channel-specific voice guidance.",
@@ -89,6 +120,11 @@ class BrandVoiceEvaluateRequest(BaseModel):
     content: str = Field(min_length=20, description="Generated content to evaluate.")
     channel: str = Field(default="blog", description="Content channel, e.g. blog/email/social/support/ads.")
     content_type: str = Field(default="blog_post", description="Specific content format being reviewed.")
+    persona_name: str | None = Field(default=None, description="Optional audience persona to evaluate against.")
+    use_llm_judge: bool = Field(
+        default=False,
+        description="Use an LLM-as-judge pass in addition to deterministic scoring.",
+    )
 
 
 class BrandVoiceEvaluateResponse(BaseModel):
@@ -98,9 +134,51 @@ class BrandVoiceEvaluateResponse(BaseModel):
     content_type: str
     overall_score: int
     dimension_scores: dict
+    llm_judge: dict | None = None
+    evaluation_method: str = "heuristic"
     violations: list[str] = Field(default=[])
     recommendations: list[str] = Field(default=[])
     reviewer_checklist: list[str] = Field(default=[])
+    status: str = "success"
+
+
+class BrandVoiceReviewCreate(BaseModel):
+    """Human review record used to close the brand voice feedback loop."""
+    content: str = Field(min_length=20, description="Content being reviewed.")
+    channel: str = Field(default="blog")
+    content_type: str = Field(default="blog_post")
+    persona_name: str | None = None
+    blog_id: int | None = Field(default=None, description="Optional saved blog ID.")
+    human_score: int | None = Field(default=None, ge=0, le=100)
+    human_notes: str | None = None
+    approved: bool = False
+    reviewer: str | None = None
+    use_llm_judge: bool = False
+
+
+class BrandVoiceReviewResponse(BaseModel):
+    """Stored human review plus the automated evaluation snapshot."""
+    id: int
+    profile_id: str
+    blog_id: int | None = None
+    channel: str
+    content_type: str
+    persona_name: str | None = None
+    content_preview: str
+    automated_score: int
+    evaluation: BrandVoiceEvaluateResponse
+    human_score: int | None = None
+    human_notes: str | None = None
+    approved: bool
+    reviewer: str | None = None
+    created_at: str
+    status: str = "success"
+
+
+class BrandVoiceReviewListResponse(BaseModel):
+    """List of stored brand voice review records."""
+    reviews: list[BrandVoiceReviewResponse]
+    total_reviews: int
     status: str = "success"
 
 
