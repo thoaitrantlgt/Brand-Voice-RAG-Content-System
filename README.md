@@ -204,6 +204,63 @@ flowchart LR
     F --> G[(brand_voice_reviews)]
 ```
 
+### 4. Trích Xuất Đặc Trưng Từ Blog Cũ
+
+Đây là phần biến các blog đã viết trước đây thành một Brand Voice Profile có thể dùng lại. Dữ liệu đầu vào nên là các bài đã được duyệt, thể hiện đúng giọng thương hiệu, không phải mọi tài liệu trong Knowledge Hub.
+
+```mermaid
+flowchart TB
+    A[Upload blog cũ: PDF/TXT/MD/DOCX] --> B[Mark purpose = brand_voice hoặc both]
+    B --> C[LangChain loader]
+    C --> D[Chunking + metadata document_id]
+    D --> E[Index vào ChromaDB]
+    E --> F[Load source chunks]
+    F --> G[Group chunks theo document_id]
+    G --> H[Ghép lại thành full blog]
+    H --> I[LLM extraction]
+    H --> J[Deterministic fallback]
+    I --> K[Brand Voice Profile]
+    J --> K
+    K --> L[StyleGuide prompt constraints]
+    K --> M[SFT/DPO seed datasets]
+    K --> N[Index profile ngược lại vào ChromaDB]
+```
+
+Pipeline chi tiết:
+
+1. Upload tài liệu mẫu ở `/rag` và chọn `Brand Voice` hoặc `Both`.
+2. `DocumentService` validate file, gắn `purpose`, rồi đưa sang document processor.
+3. `LangChainDocumentProcessor` đọc file bằng loader tương ứng và chia chunk bằng `RecursiveCharacterTextSplitter`.
+4. `ChromaVectorStore` lưu chunks vào collection `knowledge_hub`, mỗi chunk có metadata như `document_id`, `filename`, `chunk_index`, `purpose`.
+5. Khi gọi `/brand-voice/train`, `BrandVoiceService` chỉ lấy documents có `purpose = brand_voice` hoặc `both`.
+6. Service group chunks theo `document_id`, sort theo `chunk_index`, rồi ghép lại thành từng full blog.
+7. LLM extraction agent đọc các blog mẫu và rút ra:
+   - `brand_identity`: mission, vision, positioning, traits, differentiators.
+   - `audience_personas`: persona, priorities, tone adjustment, decision criteria.
+   - `tone`: primary tone, secondary tone, description.
+   - `vocabulary`: repeated terms, preferred phrases, forbidden terms, replacements.
+   - `syntax`: average sentence length, sentence style, syntax rules.
+   - `presentation`: heading style, list style, article structure.
+   - `do_dont_examples`, examples, rubrics.
+8. Nếu LLM lỗi, hệ thống dùng fallback deterministic:
+   - regex tokenization để lấy từ/cụm từ,
+   - `Counter` để tìm repeated terms,
+   - regex sentence split để tính average sentence length,
+   - lấy representative sentences làm examples,
+   - tạo starter profile với tone/rubrics mặc định.
+9. Profile được ghi ra `backend/config/brand_voice_profile.json`, sinh thêm SFT/DPO seed dataset, rồi index profile Markdown trở lại ChromaDB để Writer/Editor có thể retrieve khi cần.
+
+Nói ngắn gọn:
+
+```text
+Old approved blogs
+  -> chunk/index
+  -> reconstruct by document_id
+  -> extract identity/tone/vocabulary/syntax/presentation
+  -> build reusable Brand Voice Profile
+  -> enforce/evaluate future drafts
+```
+
 ---
 
 ## Quick Start
