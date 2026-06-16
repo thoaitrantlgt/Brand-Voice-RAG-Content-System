@@ -1,38 +1,214 @@
 # AI Content Blog OS
 
-AI Content Blog OS is a full-stack application for creating and managing blog posts with a Multi-Agent AI workflow. The backend uses FastAPI for AI orchestration, RAG, and blog storage. The frontend uses Next.js for the dashboard, article creation flow, blog management, and document upload.
+<p align="center">
+  <img src="https://img.shields.io/badge/FastAPI-Backend-009688?style=for-the-badge&logo=fastapi&logoColor=white" alt="FastAPI" />
+  <img src="https://img.shields.io/badge/Next.js-Frontend-000000?style=for-the-badge&logo=nextdotjs&logoColor=white" alt="Next.js" />
+  <img src="https://img.shields.io/badge/CrewAI-Multi--Agent-6f42c1?style=for-the-badge" alt="CrewAI" />
+  <img src="https://img.shields.io/badge/ChromaDB-RAG-4b8bbe?style=for-the-badge" alt="ChromaDB" />
+  <img src="https://img.shields.io/badge/SQLite-Content_DB-003b57?style=for-the-badge&logo=sqlite&logoColor=white" alt="SQLite" />
+</p>
 
-## Features
+<p align="center">
+  <strong>AI Content Operating System</strong> cho quy trình viết blog: Planner -> Writer -> Editor -> Brand Voice Evaluation -> Blog Management.
+</p>
 
-- Dashboard powered by real backend data: blog counts, drafts, published posts, RAG documents, indexed chunks, and system health.
-- Blog creation flow: enter keywords -> AI researches web/uploaded documents -> generate a draft outline -> user feedback -> Writer + Editor agents create the final article.
-- Upload PDF/TXT/MD/DOCX documents into the Knowledge Hub so AI can reference them during planning and writing.
-- Train a Brand Voice Profile from existing high-quality blog documents, then use it as a hard writing constraint for future content.
-- Evaluate generated drafts against the active brand voice before publishing.
-- Export SFT and DPO seed datasets for later supervised fine-tuning or preference optimization.
-- Blog management: view, edit, delete, save as draft, and publish.
-- Inline AI rewrite: select a paragraph and ask AI to rewrite it based on feedback.
+---
+
+## Tổng Quan
+
+AI Content Blog OS là một full-stack app giúp tạo, kiểm soát và quản lý bài viết bằng AI. Hệ thống kết hợp:
+
+- Multi-agent workflow bằng CrewAI.
+- RAG Knowledge Hub bằng ChromaDB.
+- Corporate Style Guide và Brand Voice Profile.
+- Human-in-the-loop draft review, inline rewrite, và feedback loop.
+- Dashboard Next.js để tạo bài, upload tài liệu, quản lý blog.
+
+```mermaid
+flowchart LR
+    A[Keywords] --> B[Planner Agent]
+    B --> C[Editable Draft Outline]
+    C --> D[Writer Agent]
+    D --> E[Editor Agent]
+    E --> F[Style Guide Enforcement]
+    F --> G[Brand Voice Evaluation]
+    G --> H[Save Draft or Publish]
+
+    R[(Knowledge Hub / ChromaDB)] --> B
+    R --> D
+    V[Brand Voice Profile] --> D
+    V --> E
+    V --> G
+```
+
+---
+
+## Tech Stack
+
+| Layer | Tech |
+| --- | --- |
+| Frontend | Next.js 16, React 19, Tailwind CSS v4, Lucide Icons |
+| Backend | FastAPI, Pydantic v2, Loguru |
+| AI Orchestration | CrewAI Planner / Writer / Editor |
+| LLM Providers | Google, OpenAI-compatible API, Anthropic, HuggingFace, Ollama |
+| RAG | LangChain loaders, ChromaDB, sentence-transformers |
+| Storage | SQLite for blogs and review records, ChromaDB for embeddings |
+| Evaluation | Rule-based style checks, Brand Voice heuristics, optional LLM-as-judge |
+| Tests | Pytest, pytest-asyncio, mocked RAG/vector dependencies |
+
+---
+
+## Kiến Trúc
+
+```mermaid
+flowchart TB
+    subgraph Frontend[Next.js Frontend]
+        Dashboard[Dashboard]
+        Create[Create Content]
+        Blogs[Blog Manager]
+        RAGUI[Knowledge Hub UI]
+    end
+
+    subgraph API[FastAPI /api/v1]
+        ContentAPI[content router]
+        DocsAPI[documents router]
+        BlogAPI[blogs router]
+    end
+
+    subgraph AI[AI Services]
+        Crew[ContentCrew]
+        Planner[Planner]
+        Writer[Writer]
+        Editor[Editor]
+        Style[StyleGuide]
+        Voice[BrandVoiceService]
+    end
+
+    subgraph Data[Data Layer]
+        SQLite[(SQLite blog_os.db)]
+        Chroma[(ChromaDB)]
+        Uploads[(data/uploads)]
+        Profile[(brand_voice_profile.json)]
+    end
+
+    Frontend --> API
+    ContentAPI --> Crew
+    Crew --> Planner
+    Crew --> Writer
+    Crew --> Editor
+    Editor --> Style
+    DocsAPI --> Voice
+    DocsAPI --> Chroma
+    BlogAPI --> SQLite
+    Voice --> Profile
+    Voice --> Chroma
+    Uploads --> Chroma
+```
+
+---
 
 ## Project Structure
 
 ```text
 .
-├── backend/   # FastAPI, CrewAI, RAG, SQLite blog storage
-├── frontend/  # Next.js, React, Tailwind CSS
-├── AGENTS.md  # Repository operating notes for coding agents
+├── backend/
+│   ├── app/
+│   │   ├── agents/          # Planner, Writer, Editor, LLM factory
+│   │   ├── api/v1/          # FastAPI routers
+│   │   ├── core/            # config, logging, style guide, interfaces
+│   │   ├── crews/           # CrewAI orchestration
+│   │   ├── db/              # SQLite init and dependency
+│   │   ├── rag/             # loaders, embeddings, Chroma vector store
+│   │   ├── repositories/    # blog and brand review persistence
+│   │   ├── schemas/         # Pydantic contracts
+│   │   └── services/        # content, document, brand voice logic
+│   ├── config/              # corporate style guide and generated profile
+│   ├── tests/
+│   └── run.py
+├── frontend/
+│   ├── app/
+│   │   ├── create/          # AI writing workflow
+│   │   ├── blogs/           # blog management
+│   │   ├── rag/             # document upload and brand voice training
+│   │   └── components/
+│   └── package.json
 └── README.md
 ```
 
 There is no root task runner. Run backend commands from `backend/` and frontend commands from `frontend/`.
 
-## Requirements
+---
 
-- Python 3.12+
-- Node.js + npm
-- A configured LLM provider or local OpenAI-compatible server
-- Optional: `SERPER_API_KEY` for Web Search
+## Core Workflows
 
-## Run The Backend
+### 1. Content Generation
+
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant FE as Next.js UI
+    participant API as FastAPI
+    participant C as ContentCrew
+    participant R as Knowledge Hub
+    participant DB as SQLite
+
+    U->>FE: Enter keywords
+    FE->>API: POST /content/titles
+    API->>C: Run Planner
+    C->>R: Optional RAG search
+    C-->>FE: Editable title + outline
+    U->>FE: Edit draft
+    FE->>API: POST /content/generate
+    API->>C: Run Writer + Editor
+    C->>R: Retrieve references
+    API-->>FE: Markdown + style_report
+    FE->>API: POST /blogs
+    API->>DB: Save draft/published post
+```
+
+### 2. Knowledge Hub / RAG
+
+```text
+Upload PDF/TXT/MD/DOCX
+  -> validate file and purpose
+  -> LangChain loader
+  -> RecursiveCharacterTextSplitter
+  -> embeddings
+  -> ChromaDB collection: knowledge_hub
+```
+
+Document purpose:
+
+- `knowledge`: factual references for RAG.
+- `brand_voice`: approved writing samples for voice training.
+- `both`: useful as both reference and voice sample.
+
+### 3. Brand Voice v2.1
+
+Brand Voice now supports:
+
+- Brand identity: mission, vision, positioning, value proposition, personality traits.
+- Audience personas: priorities, tone adjustment, channels, decision criteria.
+- Do/don't examples.
+- Channel guidance for blog, email, social, support, ads.
+- Heuristic evaluation plus optional LLM-as-judge.
+- Human review records stored in SQLite for a feedback loop.
+
+```mermaid
+flowchart LR
+    A[Approved Brand Docs] --> B[Train Brand Voice]
+    B --> C[brand_voice_profile.json]
+    C --> D[Prompt Constraints]
+    C --> E[Brand Voice Evaluation]
+    E --> F[Human Review]
+    F --> G[(brand_voice_reviews)]
+```
+
+---
+
+## Quick Start
+
+### Backend
 
 ```powershell
 cd backend
@@ -42,52 +218,58 @@ copy .env.example .env
 .\.venv\Scripts\python.exe run.py
 ```
 
-The backend runs at:
+Backend URL:
 
 ```text
 http://127.0.0.1:8000
 ```
 
-Main routes:
+Docs:
 
-- `GET /health`
-- `POST /api/v1/content/titles` - generate a draft outline from keywords
-- `POST /api/v1/content/generate` - generate a complete article from an approved draft
-- `POST /api/v1/content/rewrite` - rewrite selected text
-- `GET/POST/PUT/DELETE /api/v1/blogs`
-- `GET/POST/DELETE /api/v1/documents`
-- `POST /api/v1/documents/brand-voice/train` - build a Brand Voice Profile from indexed documents
-- `GET /api/v1/documents/brand-voice/profile` - fetch the active Brand Voice Profile
-- `POST /api/v1/documents/brand-voice/evaluate` - score content against the active Brand Voice Profile
+```text
+http://127.0.0.1:8000/docs
+```
 
-Important: backend settings are loaded from `.env` in the current working directory, so run backend commands from `backend/`.
+Important: backend settings load from `.env` in the current working directory, so run backend commands from `backend/`.
 
-## Set Up LM Studio As A Local API
+### Frontend
 
-This project can use LM Studio as an OpenAI-compatible API server. In this mode, keep `AI_PROVIDER=openai` and point `OPENAI_API_BASE` to LM Studio's local server.
+```powershell
+cd frontend
+npm install
+npm run dev
+```
 
-### 1. Prepare LM Studio
+Frontend URL:
 
-1. Install LM Studio.
-2. Download a chat/instruct model, for example `qwen3-1.7b` or any model your machine can run.
-3. Open the Developer or Local Server tab.
-4. Load the model.
-5. Start the OpenAI-compatible server.
-6. Keep the default port `1234`, which gives you:
+```text
+http://127.0.0.1:3000
+```
+
+Main pages:
+
+| Route | Purpose |
+| --- | --- |
+| `/` | Dashboard |
+| `/create` | AI writing workflow |
+| `/blogs` | Blog management |
+| `/rag` | Knowledge Hub and Brand Voice |
+
+---
+
+## Local LLM With LM Studio
+
+Use LM Studio as an OpenAI-compatible local server.
+
+1. Start LM Studio.
+2. Load a chat/instruct model.
+3. Start the local server at:
 
 ```text
 http://127.0.0.1:1234/v1
 ```
 
-You can verify the server with:
-
-```powershell
-curl http://127.0.0.1:1234/v1/models
-```
-
-### 2. Configure `backend/.env`
-
-Use this configuration in `backend/.env`:
+Use this in `backend/.env`:
 
 ```env
 RUN_MODE=cloud
@@ -105,176 +287,77 @@ DEBUG=false
 
 Notes:
 
-- `RUN_MODE=cloud` is correct for LM Studio in this repo because the backend calls LM Studio through an OpenAI-compatible HTTP API.
-- `OPENAI_API_KEY` still needs any non-empty value because OpenAI-compatible clients usually require the field.
-- `PLANNER_MODEL`, `WRITER_MODEL`, and `EDITOR_MODEL` should match the model name returned by LM Studio from `/v1/models`.
-- If you change the LM Studio port, update `OPENAI_API_BASE`.
-- `DEBUG` must be a valid boolean: `true` or `false`.
+- `RUN_MODE=cloud` is intentional because LM Studio is called through an OpenAI-compatible HTTP API.
+- `OPENAI_API_KEY` can be any non-empty value for local servers.
+- `DEBUG` must be `true` or `false`, not `release`.
 
-### 3. Run The App With LM Studio
+---
 
-Recommended order:
+## API Map
 
-1. Open LM Studio and start the server.
-2. Run the backend from `backend/`:
+### Content
 
-```powershell
-.\.venv\Scripts\python.exe run.py
-```
+| Method | Endpoint | Description |
+| --- | --- | --- |
+| `POST` | `/api/v1/content/titles` | Planner creates one editable draft outline |
+| `POST` | `/api/v1/content/generate` | Writer + Editor generate the full article |
+| `POST` | `/api/v1/content/rewrite` | Rewrite selected text with user feedback |
 
-3. Run the frontend from `frontend/`:
+### Blogs
 
-```powershell
-npm run dev
-```
+| Method | Endpoint | Description |
+| --- | --- | --- |
+| `GET` | `/api/v1/blogs` | List posts |
+| `POST` | `/api/v1/blogs` | Save draft or published post |
+| `GET` | `/api/v1/blogs/{id}` | Read one post |
+| `PUT` | `/api/v1/blogs/{id}` | Update post |
+| `DELETE` | `/api/v1/blogs/{id}` | Delete post |
 
-When you create an article at `/create`, the backend will call the model currently loaded in LM Studio to plan drafts, write content, and rewrite text.
+### Documents and Brand Voice
 
-## Run The Frontend
+| Method | Endpoint | Description |
+| --- | --- | --- |
+| `POST` | `/api/v1/documents/upload` | Upload and index a document |
+| `GET` | `/api/v1/documents` | List indexed documents |
+| `DELETE` | `/api/v1/documents/{id}` | Delete a document from ChromaDB |
+| `POST` | `/api/v1/documents/search` | Semantic search in Knowledge Hub |
+| `POST` | `/api/v1/documents/brand-voice/train` | Build active Brand Voice Profile |
+| `GET` | `/api/v1/documents/brand-voice/profile` | Get active profile |
+| `POST` | `/api/v1/documents/brand-voice/evaluate` | Score content against the profile |
+| `POST` | `/api/v1/documents/brand-voice/reviews` | Store automated eval + human review |
+| `GET` | `/api/v1/documents/brand-voice/reviews` | List review history |
 
-```powershell
-cd frontend
-npm install
-npm run dev
-```
+---
 
-The frontend runs at:
+## Brand Voice Examples
 
-```text
-http://127.0.0.1:3000
-```
-
-Main pages:
-
-- `/` - Dashboard
-- `/create` - Create a blog post
-- `/blogs` - Manage blog posts
-- `/rag` - Upload and search documents
-
-The frontend currently calls the backend at `http://127.0.0.1:8000/api/v1`.
-
-## Blog Creation Workflow
-
-1. Go to `/create`.
-2. Enter the main keywords. Multiple keywords can be separated with commas.
-3. Enable Web Search if you want AI to use updated web information.
-4. The Planner Agent searches the web or uploaded documents in the Knowledge Hub.
-5. The system creates one draft with a title, SEO title, headings, and bullet points.
-6. The user edits the draft/outline.
-7. Writer + Editor agents generate the complete article.
-8. The user can preview, edit Markdown, rewrite selected paragraphs, save as draft, or publish.
-
-## Corporate Style Guide
-
-The project includes an enterprise-style content guardrail system. The source of truth is:
-
-```text
-backend/config/corporate_style_guide.json
-```
-
-It defines:
-
-- Allowed terms that the model should prefer.
-- Forbidden terms and deterministic replacements.
-- Style rules such as tone, expertise level, maximum sentence length, and writing principles.
-
-Backend configuration:
-
-```env
-STYLE_GUIDE_PATH=./config/corporate_style_guide.json
-```
-
-How it is enforced:
-
-1. Pre-generation: the Writer and Editor tasks receive the corporate style guide in their prompts.
-2. Post-generation: backend code scans the final Markdown and automatically replaces forbidden terms.
-3. The API returns `style_report`, including style score, replacements, remaining forbidden terms, and sentence warnings.
-4. The `/create` page shows a Corporate Style panel after content generation.
-
-This combines prompt engineering with deterministic code checks, which is safer than relying only on the LLM to remember every rule.
-
-## Brand Voice Training
-
-The Knowledge Hub can now train a reusable Brand Voice Profile from your previous high-quality content. This follows the workflow described in Search Engine Land's guide to training in-house LLMs on brand voice:
-
-```text
-Upload best content -> Extract brand patterns -> Build profile -> Index profile into RAG -> Generate/evaluate content
-```
-
-Recommended source data:
-
-- Use 20-30 of your strongest blog posts or brand-approved documents.
-- Prefer complete articles with intro, body sections, examples, and conclusion intact.
-- Choose content that performed well or best represents the company's voice.
-- Remove outdated, weak, duplicated, or off-brand examples before training.
-
-When uploading documents, choose a document purpose:
-
-- `knowledge`: source material for RAG while writing, such as product docs, reports, research, or customer insights.
-- `brand_voice`: approved writing samples used only for Brand Voice Training.
-- `both`: material that is both factually useful and a strong example of the company's voice.
-
-Brand Voice Training only uses documents marked `brand_voice` or `both`. This keeps technical references or product PDFs from contaminating the tone profile.
-
-### Train From The UI
-
-1. Start the backend and frontend.
-2. Go to `/rag`.
-3. Upload your best blog documents into the Knowledge Hub.
-4. Mark tone samples as `Brand Voice` or `Both`.
-5. Click `Train Brand Voice`.
-6. The profile is saved, indexed into ChromaDB, and automatically used by future Writer/Editor prompts.
-
-### Train From The API
+### Train
 
 ```powershell
 curl -X POST http://127.0.0.1:8000/api/v1/documents/brand-voice/train `
   -H "Content-Type: application/json" `
   -d '{
-    "company_name": "Your Company",
+    "company_name": "Acme",
     "document_ids": [],
     "min_documents": 20,
     "max_documents": 30,
-    "target_audience": "Marketing managers and business leaders",
-    "brand_values": ["clear", "practical", "trustworthy"],
+    "brand_identity": {
+      "mission": "Make AI content practical for business teams.",
+      "positioning": "Practical AI content advisor.",
+      "personality_traits": ["clear", "credible", "direct"]
+    },
+    "audience_personas": [
+      {
+        "name": "Marketing lead",
+        "priorities": ["clarity", "pipeline impact"],
+        "tone_adjustment": "Strategic and direct."
+      }
+    ],
     "channels": ["blog", "email", "social", "support", "ads"]
   }'
 ```
 
-Notes:
-
-- `document_ids: []` means "use all indexed documents marked `brand_voice` or `both`."
-- If fewer than `min_documents` are available, training still runs but returns a warning.
-- The LLM extraction step has a deterministic fallback, so the pipeline can still produce a starter profile if the LLM call fails.
-
-### What The Profile Contains
-
-The generated Brand Voice Profile includes:
-
-- Tone profile: primary tone, secondary tone traits, and description.
-- Vocabulary: repeated terms, preferred phrases, forbidden terms, and replacements.
-- Syntax: sentence rhythm, average sentence length, and writing rules.
-- Presentation rules: heading style, list style, chart intro style, and article flow.
-- Strategic context: target audience, brand values, interaction style, and message architecture.
-- Channel guidance: blog, email, social, support, and ads voice adjustments.
-- Prompt templates for common content types.
-- 10 calibration prompts for testing whether the system stays on-brand.
-- Governance checklist and RACI-style ownership notes for human review.
-- Training method recommendation: prompt engineering, RAG, PEFT, or full fine-tuning based on available data volume.
-
-Generated files:
-
-```text
-backend/config/brand_voice_profile.json
-backend/data/brand_voice/brand_voice_sft.jsonl
-backend/data/brand_voice/brand_voice_dpo_seed.jsonl
-```
-
-The SFT dataset uses the approved source articles as assistant responses. The DPO file is a seed preference dataset and should be reviewed by a human before any real DPO training run.
-
-### Evaluate Drafts Before Publishing
-
-Use the evaluation endpoint to check whether a generated draft matches the active Brand Voice Profile:
+### Evaluate With Optional LLM Judge
 
 ```powershell
 curl -X POST http://127.0.0.1:8000/api/v1/documents/brand-voice/evaluate `
@@ -282,27 +365,61 @@ curl -X POST http://127.0.0.1:8000/api/v1/documents/brand-voice/evaluate `
   -d '{
     "channel": "blog",
     "content_type": "blog_post",
+    "persona_name": "Marketing lead",
+    "use_llm_judge": true,
     "content": "# Example Title\n\n## Section\n\nYour generated draft here..."
   }'
 ```
 
-The response includes:
+### Store Human Review
 
-- `overall_score`
-- `dimension_scores` for tone, vocabulary, readability, structure, and channel fit
-- voice violations
-- improvement recommendations
-- human reviewer checklist
+```powershell
+curl -X POST http://127.0.0.1:8000/api/v1/documents/brand-voice/reviews `
+  -H "Content-Type: application/json" `
+  -d '{
+    "channel": "blog",
+    "content_type": "blog_post",
+    "human_score": 92,
+    "human_notes": "On brand, but intro can be sharper.",
+    "approved": true,
+    "reviewer": "Content Lead",
+    "content": "# Example Title\n\n## Section\n\nReviewed draft..."
+  }'
+```
 
-Use this score as a pre-publish guardrail, not as a replacement for editorial review.
+---
+
+## Generated Files
+
+Runtime data is created under `backend/data/` by default.
+
+```text
+backend/data/blog_os.db                 # SQLite blogs and brand reviews
+backend/data/chroma/                    # ChromaDB persistent vector store
+backend/data/uploads/                   # uploaded documents
+backend/data/brand_voice/               # generated SFT/DPO seed datasets
+backend/config/brand_voice_profile.json # active Brand Voice Profile
+```
+
+Do not commit generated/vendor directories:
+
+- `backend/.venv/`
+- `backend/.pytest_cache/`
+- `backend/data/`
+- `frontend/node_modules/`
+- `frontend/.next/`
+
+---
 
 ## Testing
 
-Backend:
+Backend focused tests:
 
 ```powershell
 cd backend
-.\.venv\Scripts\python.exe -m pytest
+$env:DEBUG='false'
+.\.venv\Scripts\python.exe -m pytest tests\test_brand_voice_service.py -v
+.\.venv\Scripts\python.exe -m pytest tests
 ```
 
 Frontend:
@@ -320,25 +437,26 @@ npm.cmd run lint
 npm.cmd run build
 ```
 
-## Runtime Data And Generated Files
+Note: run pytest against `backend/tests`. The backend root contains a manual `test_lmstudio.py` script that tries to connect to LM Studio during collection.
 
-Do not commit runtime/generated files:
+---
 
-- `backend/.venv/`
-- `backend/.pytest_cache/`
-- `backend/data/`
-- `frontend/node_modules/`
-- `frontend/.next/`
+## Roadmap
 
-SQLite blog storage and ChromaDB data are created under `backend/data/` by default.
-Brand Voice SFT/DPO datasets are also generated under `backend/data/brand_voice/` by default.
+```mermaid
+timeline
+    title AI Content Blog OS Roadmap
+    Phase 1 : Core FastAPI + CrewAI pipeline
+    Phase 2 : RAG Knowledge Hub with ChromaDB
+    Phase 3 : Next.js dashboard and blog management
+    Phase 4 : Brand Voice Profile and evaluation
+    Phase 5 : Review analytics, publishing integrations, content calendar
+```
 
-## Configuration Notes
+---
 
-- Start from `backend/.env.example`, then copy it to `backend/.env`.
-- `DEBUG` must be a valid boolean such as `true` or `false`.
-- Web Search requires `SERPER_API_KEY`.
-- RAG uses ChromaDB and documents uploaded from the `/rag` page.
-- Brand Voice Profile defaults:
-  - `BRAND_VOICE_PROFILE_PATH=./config/brand_voice_profile.json`
-  - `BRAND_VOICE_DATASET_DIR=./data/brand_voice`
+## One-Liner
+
+```text
+AI Content Blog OS = your RAG-backed writing team, brand voice guardrail, and blog CMS in one local-first workspace.
+```
