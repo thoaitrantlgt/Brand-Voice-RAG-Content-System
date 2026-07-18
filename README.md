@@ -1,5 +1,4 @@
 <h1 align="center">AI Content OS</h1>
-
 <p align="center"><strong>Project-scoped, review-gated AI writing for internal content teams.</strong></p>
 
 AI Content OS is an internal, local-first writing workflow for teams that need factual grounding, approved brand voice, repeatable review, and project isolation. It combines a FastAPI API, a separate background worker, SQLite metadata, Chroma vectors, and a Next.js operations UI.
@@ -48,7 +47,7 @@ The API returns `202 Accepted` for queued planning, generation, and profile-trai
 
 ### Primary API Surface
 
-All application routes are under `/api/v1` and require a bearer token when authentication is enabled.
+Business APIs are under `/api/v1` and require a bearer token when authentication is enabled. System endpoints `GET /health` and `GET /ready` are root routes.
 
 | Method | Route | Role | Purpose |
 | --- | --- | --- | --- |
@@ -82,7 +81,7 @@ Do not build new integrations against either legacy surface. Use the project, pr
 
 ### Prerequisites
 
-Use PowerShell, Python 3.12-compatible tooling, Node.js for Next.js 16, and LM Studio with `qwen3.5-2b` loaded. There is no root package manifest or task runner.
+Use PowerShell 7.0+ for multipart uploads, Python 3.12-compatible tooling, Node.js for Next.js 16, and LM Studio with `qwen3.5-2b` loaded. There is no root package manifest or task runner.
 
 ### 1. Prepare The Backend
 
@@ -182,6 +181,7 @@ This example uses PowerShell and a secure token. Replace placeholders before run
 $api = 'http://127.0.0.1:8000/api/v1'
 $adminHeaders = @{ Authorization = 'Bearer replace-admin-token'; 'Content-Type' = 'application/json' }
 $writerHeaders = @{ Authorization = 'Bearer replace-writer-token'; 'Content-Type' = 'application/json' }
+$writerUploadHeaders = @{ Authorization = 'Bearer replace-writer-token' }
 $reviewerHeaders = @{ Authorization = 'Bearer replace-review-token'; 'Content-Type' = 'application/json' }
 ```
 
@@ -199,24 +199,33 @@ Invoke-RestMethod -Method Post -Uri "$api/projects" -Headers $adminHeaders -Body
 
 ```powershell
 Invoke-RestMethod -Method Post -Uri "$api/documents/upload" `
-  -Headers $writerHeaders `
+  -Headers $writerUploadHeaders `
   -Form @{ file = Get-Item 'C:\sources\product-facts.pdf'; project_id = 'acme'; cluster = 'knowledge' }
 ```
 
-Use the same endpoint with `cluster = 'brand_voice'` for approved writing samples. Profile training requires at least five project-scoped samples that a reviewer has marked `approved` with a human rating of 4 or 5.
+Profile training requires at least five project-scoped `brand_voice` samples that a reviewer has marked `approved` with a human rating of 4 or 5.
 
 ### Queue And Activate A Profile
 
 ```powershell
-$documentIds = @(
-  'brand-voice-001', 'brand-voice-002', 'brand-voice-003',
-  'brand-voice-004', 'brand-voice-005'
-)
-$approvalRatings = @(5, 5, 4, 4, 4)
-for ($index = 0; $index -lt $documentIds.Count; $index++) {
-  Invoke-RestMethod -Method Post -Uri "$api/projects/acme/documents/$($documentIds[$index])/approval" `
+$sampleRoot = 'C:\sources\brand-voice'
+$brandSamples = @(Get-ChildItem -LiteralPath $sampleRoot -File |
+  Where-Object { $_.Extension -in '.pdf', '.txt', '.md', '.docx' } |
+  Select-Object -First 5)
+if ($brandSamples.Count -lt 5) { throw "Add at least five supported files to $sampleRoot." }
+
+$documentIds = foreach ($sample in $brandSamples) {
+  $upload = Invoke-RestMethod -Method Post -Uri "$api/documents/upload" `
+    -Headers $writerUploadHeaders `
+    -Form @{ file = $sample; project_id = 'acme'; purpose = 'brand_voice'; cluster = 'brand_voice' }
+  $upload.document_id
+}
+if ($documentIds.Count -lt 5) { throw 'Fewer than five brand samples were uploaded.' }
+
+foreach ($documentId in $documentIds) {
+  Invoke-RestMethod -Method Post -Uri "$api/projects/acme/documents/$documentId/approval" `
     -Headers $reviewerHeaders `
-    -Body (@{ status = 'approved'; human_rating = $approvalRatings[$index] } | ConvertTo-Json)
+    -Body (@{ status = 'approved'; human_rating = 4 } | ConvertTo-Json)
 }
 
 Invoke-RestMethod -Method Post -Uri "$api/projects/acme/profiles/train" `
