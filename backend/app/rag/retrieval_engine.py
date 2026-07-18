@@ -27,6 +27,9 @@ class RetrievalEngine:
         query: str,
         top_k: int | None = None,
         document_id: str | None = None,
+        project_id: str | None = None,
+        cluster: str | None = None,
+        profile_id: str | None = None,
     ) -> list[dict[str, Any]]:
         """
         Truy xuất top_k chunks liên quan nhất.
@@ -40,7 +43,20 @@ class RetrievalEngine:
             List dict [{"text": str, "metadata": dict, "distance": float}].
         """
         k = top_k or self._top_k
-        where = {"document_id": document_id} if document_id else None
+        filters = []
+        if document_id:
+            filters.append({"document_id": document_id})
+        if project_id:
+            filters.append({"project_id": project_id})
+        if cluster:
+            filters.append({"cluster": cluster})
+        if profile_id:
+            filters.append({"profile_id": profile_id})
+        where = None
+        if len(filters) == 1:
+            where = filters[0]
+        elif filters:
+            where = {"$and": filters}
 
         logger.debug("Retrieving context | query='{}' top_k={}", query[:60], k)
 
@@ -54,6 +70,9 @@ class RetrievalEngine:
         query: str,
         top_k: int | None = None,
         document_id: str | None = None,
+        project_id: str | None = None,
+        cluster: str | None = None,
+        profile_id: str | None = None,
     ) -> str:
         """
         Convenience method — trả về context string đã format,
@@ -63,7 +82,9 @@ class RetrievalEngine:
             String format:
             "--- Tài liệu tham khảo ---\\n[1] (filename, page X)\\n<text>\\n\\n..."
         """
-        chunks = self.retrieve(query, top_k, document_id)
+        chunks = self.retrieve(
+            query, top_k, document_id, project_id, cluster, profile_id
+        )
 
         if not chunks:
             return "Không tìm thấy tài liệu tham khảo liên quan."

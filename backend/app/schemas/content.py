@@ -14,6 +14,7 @@ class GenerateTitlesRequest(BaseModel):
         default=False,
         description="Enable web search for current information.",
     )
+    project_id: str = "default"
 
 
 class GenerateContentRequest(BaseModel):
@@ -36,12 +37,16 @@ class GenerateContentRequest(BaseModel):
         default=False,
         description="Enable web search for the Writer Agent.",
     )
+    project_id: str = "default"
+    profile_id: str | None = None
 
 
 class RewriteRequest(BaseModel):
     """Request to rewrite selected text based on user feedback."""
     original_text: str = Field(min_length=1)
     feedback: str = Field(min_length=1)
+    project_id: str = "default"
+    profile_id: str | None = None
 
 
 class PostTitleItem(BaseModel):

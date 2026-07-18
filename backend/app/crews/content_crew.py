@@ -1,6 +1,8 @@
 """
 crews/content_crew.py - Content Generation Crew.
 """
+import os
+from pathlib import Path
 from typing import Any
 
 from crewai import Crew, Process
@@ -27,6 +29,9 @@ class ContentCrew(ICrew):
     ) -> None:
         self._settings = settings
         self._vector_store = vector_store
+        storage_dir = Path(settings.CHROMA_PERSIST_DIR).parent / "crewai"
+        storage_dir.mkdir(parents=True, exist_ok=True)
+        os.environ.setdefault("CREWAI_STORAGE_DIR", str(storage_dir.resolve()))
 
     def _build(
         self,
@@ -92,7 +97,11 @@ class ContentCrew(ICrew):
                 from app.tools.knowledge_base_tool import KnowledgeBaseTool
 
                 retrieval_engine = RetrievalEngine(self._vector_store, self._settings)
-                tools.append(KnowledgeBaseTool(retrieval_engine=retrieval_engine))
+                tools.append(KnowledgeBaseTool(
+                    retrieval_engine=retrieval_engine,
+                    project_id=inputs.get("project_id", "default"),
+                    cluster="knowledge",
+                ))
                 logger.info("KnowledgeBaseTool enabled for {} | {} docs", agent_name, doc_count)
             else:
                 logger.info("RAG is empty (0 docs) - {} running without KnowledgeBaseTool", agent_name)
@@ -107,6 +116,33 @@ class ContentCrew(ICrew):
 
     def run(self, inputs: dict[str, Any]) -> dict[str, Any]:
         logger.info("Starting ContentCrew | inputs={}", inputs)
+
+        citations: list[dict[str, Any]] = []
+        if self._vector_store is not None and inputs.get("selected_title"):
+            from app.rag.retrieval_engine import RetrievalEngine
+
+            query = f"{inputs.get('selected_title', '')} {inputs.get('keywords', '')}".strip()
+            chunks = RetrievalEngine(self._vector_store, self._settings).retrieve(
+                query=query,
+                top_k=2,
+                project_id=inputs.get("project_id", "default"),
+                cluster="knowledge",
+            )
+            context = "\n\n".join(str(chunk.get("text", "")) for chunk in chunks)
+            citations = [
+                {
+                    "document_id": str(chunk.get("metadata", {}).get("document_id", "")),
+                    "chunk_index": int(str(chunk.get("metadata", {}).get("chunk_index", 0)) or 0),
+                    "source_url": chunk.get("metadata", {}).get("source_url"),
+                    "excerpt": str(chunk.get("text", ""))[:500],
+                    "relevance_score": round(1 - float(chunk.get("distance", 1)), 4),
+                }
+                for chunk in chunks
+                if chunk.get("metadata", {}).get("document_id")
+            ]
+            inputs = {**inputs, "knowledge_context": context[:3000]}
+        else:
+            inputs = {**inputs, "knowledge_context": "No project knowledge was retrieved."}
 
         tracking_tool: TrackingSearchTool | None = None
         if inputs.get("use_web_search"):
@@ -144,6 +180,7 @@ class ContentCrew(ICrew):
             result_dict: dict[str, Any] = {
                 "raw_output": raw,
                 "status": "success",
+                "citations": citations,
             }
 
             if tracking_tool and tracking_tool.collected_links:

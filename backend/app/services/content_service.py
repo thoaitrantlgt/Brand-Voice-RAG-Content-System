@@ -10,26 +10,44 @@ from app.core.exceptions import ContentGenerationError
 from app.core.interfaces import ICrew
 from app.core.logging import logger
 from app.core.style_guide import StyleGuide
+from app.repositories.brand_voice_profile_repository import BrandVoiceProfileRepository
 
 
 class ContentService:
     """Service layer between API routers and Crew orchestration."""
 
-    def __init__(self, crew: ICrew) -> None:
+    def __init__(
+        self,
+        crew: ICrew,
+        profile_repository: BrandVoiceProfileRepository | None = None,
+    ) -> None:
         self._crew = crew
         settings = getattr(crew, "_settings", None)
         self._settings = settings
+        self._profile_repository = profile_repository
         self._style_guide = self._load_style_guide()
 
-    def _load_style_guide(self) -> StyleGuide:
+    def _load_style_guide(
+        self, project_id: str = "default", profile_id: str | None = None
+    ) -> StyleGuide:
         style_guide_path = getattr(self._settings, "STYLE_GUIDE_PATH", "./config/corporate_style_guide.json")
         brand_voice_path = getattr(self._settings, "BRAND_VOICE_PROFILE_PATH", "./config/brand_voice_profile.json")
-        return StyleGuide.from_file(style_guide_path).with_brand_voice_profile(brand_voice_path)
+        guide = StyleGuide.from_file(style_guide_path)
+        if self._profile_repository is not None:
+            stored = (
+                self._profile_repository.get(project_id, profile_id)
+                if profile_id
+                else self._profile_repository.get_active(project_id)
+            )
+            if stored:
+                return guide.with_brand_voice_data(stored["profile"])
+        return guide.with_brand_voice_profile(brand_voice_path)
 
     async def generate_titles(
         self,
         keywords: list[str],
         use_web_search: bool = False,
+        project_id: str = "default",
     ) -> dict[str, Any]:
         """Run Planner Agent to create one editable draft outline."""
         logger.info("Generating draft plan | keywords={} web_search={}", keywords, use_web_search)
@@ -39,6 +57,7 @@ class ContentService:
                 inputs={
                     "keywords": ", ".join(keywords),
                     "use_web_search": use_web_search,
+                    "project_id": project_id,
                 }
             )
             raw_output = result.get("raw_output", "")
@@ -145,12 +164,15 @@ class ContentService:
         selected_title: str,
         outline: list[str] | None = None,
         use_web_search: bool = False,
+        project_id: str = "default",
+        profile_id: str | None = None,
+        brief_context: str = "",
     ) -> dict[str, Any]:
         """Run Writer + Editor, then enforce corporate style constraints."""
         logger.info("Generating content | title={}", selected_title)
 
         try:
-            self._style_guide = self._load_style_guide()
+            self._style_guide = self._load_style_guide(project_id, profile_id)
             result = self._crew.run(
                 inputs={
                     "keywords": ", ".join(keywords),
@@ -158,10 +180,15 @@ class ContentService:
                     "outline": "\n".join(outline) if outline else "",
                     "use_web_search": use_web_search,
                     "style_guide_instructions": self._style_guide.to_prompt(),
+                    "project_id": project_id,
+                    "profile_id": profile_id,
+                    "brief_context": brief_context,
                 }
             )
             raw_output = result.get("raw_output", "")
             logger.info("Raw output length: {} chars | preview: {}", len(raw_output), raw_output[:200])
+            raw_output = self._extract_single_article(raw_output)
+            result["raw_output"] = raw_output
 
             title_tag = selected_title
             h1_match = re.search(r"^# (.+)", raw_output, re.MULTILINE)
@@ -189,12 +216,46 @@ class ContentService:
                 {"title": selected_title},
             ) from e
 
-    async def rewrite_content(self, original_text: str, feedback: str) -> dict[str, Any]:
+    @staticmethod
+    def _extract_single_article(raw_output: str) -> str:
+        """Keep the strongest complete article when a small model repeats drafts."""
+        cleaned = raw_output.strip()
+        fence = re.fullmatch(r"```(?:markdown|md)?\s*(.*?)\s*```", cleaned, re.DOTALL | re.IGNORECASE)
+        if fence:
+            cleaned = fence.group(1).strip()
+
+        starts = [match.start() for match in re.finditer(r"(?m)^#\s+", cleaned)]
+        if len(starts) <= 1:
+            return cleaned
+
+        starts.append(len(cleaned))
+        candidates = [cleaned[starts[index]:starts[index + 1]].strip() for index in range(len(starts) - 1)]
+
+        def score(article: str) -> tuple[int, int, int]:
+            headings = len(re.findall(r"(?m)^##\s+", article))
+            complete = int(bool(re.search(r"(?im)^##\s+(kết luận|lời kết|tổng kết)\b", article)))
+            return complete, headings, len(article)
+
+        selected = max(candidates, key=score)
+        logger.warning(
+            "Repeated article output detected | h1_count={} selected_chars={}",
+            len(candidates),
+            len(selected),
+        )
+        return selected
+
+    async def rewrite_content(
+        self,
+        original_text: str,
+        feedback: str,
+        project_id: str = "default",
+        profile_id: str | None = None,
+    ) -> dict[str, Any]:
         """Rewrite selected text and enforce the corporate style guide."""
         logger.info("Rewriting content | feedback={}", feedback)
 
         try:
-            self._style_guide = self._load_style_guide()
+            self._style_guide = self._load_style_guide(project_id, profile_id)
             llm_factory = LLMFactory(self._crew._settings)
             llm = llm_factory.create(self._crew._settings.EDITOR_MODEL)
             prompt = (

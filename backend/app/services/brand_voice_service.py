@@ -138,6 +138,22 @@ class BrandVoiceService:
             reviewer_checklist=profile.get("governance", {}).get("reviewer_checklist", []),
         )
 
+    def score_content_against_profile(
+        self,
+        content: str,
+        profile: dict[str, Any],
+        channel: str = "blog",
+        persona_name: str | None = None,
+    ) -> dict[str, Any]:
+        scores, violations, recommendations = self._score_content_against_profile(
+            content, profile, channel, persona_name
+        )
+        return {
+            "dimension_scores": scores,
+            "violations": violations,
+            "recommendations": recommendations,
+        }
+
     def _load_source_documents(
         self,
         document_ids: list[str],
@@ -207,6 +223,11 @@ class BrandVoiceService:
             "{\n"
             '  "brand_identity": {"mission": "", "vision": "", "positioning": "", "personality_traits": [], "differentiators": []},\n'
             '  "audience_personas": [{"name": "", "priorities": [], "tone_adjustment": "", "decision_criteria": []}],\n'
+            '  "writing_fingerprint": {\n'
+            '    "sentence_patterns": {"average_sentence_words": 0, "short_fragment_ratio": 0, "rhetorical_question_ratio": 0, "dash_usage_per_1000_words": 0, "parenthetical_aside_ratio": 0, "preferred_structures": []},\n'
+            '    "vocabulary_fingerprints": {"preferred_terms": [], "transition_phrases": [], "forbidden_cliches": []},\n'
+            '    "perspective_matching": {"self_reference": "", "reader_address": "", "stance": "", "argument_style": ""}\n'
+            '  },\n'
             '  "tone": {"primary": "", "secondary": [], "description": ""},\n'
             '  "vocabulary": {"repeated_terms": [], "preferred_phrases": [], "forbidden_terms": [], "replacements": {}},\n'
             '  "syntax": {"sentence_style": "", "average_sentence_words": 0, "rules": []},\n'
@@ -251,6 +272,10 @@ class BrandVoiceService:
                     "text": first_sentence[:240],
                     "source": document["filename"],
                 })
+        writing_fingerprint = self._extract_writing_fingerprint(
+            documents,
+            preferred_terms=terms[:12],
+        )
 
         return {
             "tone": {
@@ -290,6 +315,7 @@ class BrandVoiceService:
                     "decision_criteria": ["specificity", "accuracy", "usefulness"],
                 }
             ],
+            "writing_fingerprint": writing_fingerprint,
             "do_dont_examples": {
                 "do": ["Explain the point plainly before adding nuance."],
                 "dont": ["Do not rely on generic hype or unsupported superlatives."],
@@ -317,9 +343,10 @@ class BrandVoiceService:
         rubrics = analysis.get("rubrics", [])
         brand_identity = self._build_brand_identity(analysis, company_name, request)
         audience_personas = self._build_audience_personas(analysis, request)
+        writing_fingerprint = self._build_writing_fingerprint(analysis, documents, preferred_phrases)
         return {
             "profile_id": profile_id,
-            "version": "2.1",
+            "version": "2.2",
             "company_name": company_name,
             "created_at": datetime.now(timezone.utc).isoformat(),
             "source_document_count": source_count,
@@ -329,6 +356,7 @@ class BrandVoiceService:
             ],
             "brand_identity": brand_identity,
             "audience_personas": audience_personas,
+            "writing_fingerprint": writing_fingerprint,
             "strategic_context": {
                 "target_audience": request.target_audience or "Primary blog readers and prospective customers.",
                 "brand_values": request.brand_values,
@@ -365,8 +393,226 @@ class BrandVoiceService:
                 "writing_principles": rubrics,
                 "preferred_phrases": preferred_phrases,
                 "personality_traits": brand_identity.get("personality_traits", []),
+                "writing_fingerprint": writing_fingerprint,
             },
         }
+
+    def _build_writing_fingerprint(
+        self,
+        analysis: dict[str, Any],
+        documents: list[dict[str, Any]],
+        preferred_terms: list[str],
+    ) -> dict[str, Any]:
+        measured = self._extract_writing_fingerprint(documents, preferred_terms=preferred_terms)
+        extracted = analysis.get("writing_fingerprint") or {}
+        if not isinstance(extracted, dict):
+            return measured
+
+        return {
+            "sentence_patterns": {
+                **measured.get("sentence_patterns", {}),
+                **{
+                    key: value
+                    for key, value in (extracted.get("sentence_patterns") or {}).items()
+                    if value not in (None, "", [])
+                },
+            },
+            "vocabulary_fingerprints": {
+                **measured.get("vocabulary_fingerprints", {}),
+                **{
+                    key: value
+                    for key, value in (extracted.get("vocabulary_fingerprints") or {}).items()
+                    if value not in (None, "", [])
+                },
+            },
+            "perspective_matching": {
+                **measured.get("perspective_matching", {}),
+                **{
+                    key: value
+                    for key, value in (extracted.get("perspective_matching") or {}).items()
+                    if value not in (None, "", [])
+                },
+            },
+        }
+
+    def _extract_writing_fingerprint(
+        self,
+        documents: list[dict[str, Any]],
+        preferred_terms: list[str] | None = None,
+    ) -> dict[str, Any]:
+        text = "\n\n".join(document.get("text", "") for document in documents)
+        metrics = self._text_style_metrics(text)
+        transition_phrases = self._find_transition_phrases(text)
+        perspective = self._infer_perspective(text)
+
+        preferred_structures = []
+        if metrics["short_fragment_ratio"] >= 0.08:
+            preferred_structures.append("Uses short fragments for emphasis.")
+        if metrics["rhetorical_question_ratio"] >= 0.05:
+            preferred_structures.append("Uses rhetorical questions to open or turn paragraphs.")
+        if metrics["dash_usage_per_1000_words"] >= 2:
+            preferred_structures.append("Uses dashes to add asides or sharpen contrast.")
+        if metrics["parenthetical_aside_ratio"] >= 0.03:
+            preferred_structures.append("Uses parenthetical asides for nuance.")
+        if not preferred_structures:
+            preferred_structures.append("Uses balanced explanatory sentences with restrained punctuation.")
+
+        return {
+            "sentence_patterns": {
+                **metrics,
+                "preferred_structures": preferred_structures,
+            },
+            "vocabulary_fingerprints": {
+                "preferred_terms": self._dedupe_strings(preferred_terms or [])[:30],
+                "transition_phrases": transition_phrases,
+                "forbidden_cliches": [
+                    "trong kỷ nguyên số",
+                    "đột phá",
+                    "toàn diện",
+                    "đỉnh cao",
+                    "hành trình",
+                    "cam kết",
+                    "đáng chú ý",
+                    "tóm lại",
+                    "in the digital age",
+                    "game-changing",
+                    "revolutionary",
+                ],
+            },
+            "perspective_matching": perspective,
+        }
+
+    def _text_style_metrics(self, text: str) -> dict[str, Any]:
+        sentences = self._split_sentences(text)
+        sentence_lengths = [self._word_count(sentence) for sentence in sentences]
+        total_sentences = max(1, len(sentence_lengths))
+        total_words = max(1, self._word_count(text))
+        short_fragments = [
+            sentence for sentence, length in zip(sentences, sentence_lengths)
+            if 2 <= length <= 4
+        ]
+        rhetorical_questions = [sentence for sentence in sentences if sentence.rstrip().endswith("?")]
+        parenthetical_asides = re.findall(r"\([^)]{3,160}\)", text)
+        dash_count = text.count("—") + text.count("–") + len(re.findall(r"\s-\s", text))
+        passive_markers = [" được ", " bị ", " was ", " were ", " is being ", " are being "]
+        passive_sentences = [
+            sentence for sentence in sentences
+            if any(marker in f" {sentence.lower()} " for marker in passive_markers)
+        ]
+
+        punctuation_counts = {
+            "comma": text.count(","),
+            "semicolon": text.count(";"),
+            "colon": text.count(":"),
+            "dash": dash_count,
+            "parentheses": len(parenthetical_asides),
+            "question_mark": text.count("?"),
+            "exclamation_mark": text.count("!"),
+        }
+        punctuation_per_1000_words = {
+            key: round(value / total_words * 1000, 2)
+            for key, value in punctuation_counts.items()
+        }
+
+        avg_words = round(sum(sentence_lengths) / total_sentences, 1) if sentence_lengths else 0
+        active_voice_ratio = round(1 - (len(passive_sentences) / total_sentences), 2)
+
+        return {
+            "average_sentence_words": avg_words,
+            "short_fragment_ratio": round(len(short_fragments) / total_sentences, 3),
+            "rhetorical_question_ratio": round(len(rhetorical_questions) / total_sentences, 3),
+            "dash_usage_per_1000_words": round(dash_count / total_words * 1000, 2),
+            "parenthetical_aside_ratio": round(len(parenthetical_asides) / total_sentences, 3),
+            "active_voice_ratio": max(0, min(1, active_voice_ratio)),
+            "punctuation_per_1000_words": punctuation_per_1000_words,
+            "short_fragment_examples": short_fragments[:8],
+        }
+
+    def _infer_perspective(self, text: str) -> dict[str, Any]:
+        lowered = f" {text.lower()} "
+        self_reference_options = {
+            "tôi": [" tôi ", " toi ", " mình ", " minh ", " i "],
+            "chúng tôi": [" chúng tôi ", " chung toi ", " we ", " our "],
+            "chúng ta": [" chúng ta ", " chung ta ", " us "],
+        }
+        reader_options = {
+            "bạn": [" bạn ", " ban ", " you ", " your "],
+            "anh em": [" anh em "],
+            "developer": [" developer", " developers", " dev "],
+            "team": [" team ", " teams "],
+        }
+        stance_markers = {
+            "mentor": ["hãy", "nen", "nên", "can", "cần", "here is", "you should"],
+            "peer": ["mình", "minh", "chúng ta", "cung nhau", "together", "we"],
+            "contrarian": ["không hẳn", "khong han", "nghe thì", "nghe thi", "nhưng thực tế", "but in practice", "however"],
+        }
+
+        self_reference = self._best_marker_label(lowered, self_reference_options, fallback="unspecified")
+        reader_address = self._best_marker_label(lowered, reader_options, fallback="reader")
+        stance = self._best_marker_label(lowered, stance_markers, fallback="mentor")
+        argument_style = "balanced_with_counterpoints" if stance == "contrarian" else "explain_then_recommend"
+
+        return {
+            "self_reference": self_reference,
+            "reader_address": reader_address,
+            "stance": stance,
+            "argument_style": argument_style,
+        }
+
+    def _find_transition_phrases(self, text: str) -> list[str]:
+        lowered = text.lower()
+        candidates = [
+            "thực ra thì",
+            "thuc ra thi",
+            "có điều",
+            "co dieu",
+            "nhưng thực tế là",
+            "nhung thuc te la",
+            "không hẳn",
+            "khong han",
+            "nghe thì hay",
+            "nghe thi hay",
+            "nhìn lại xem",
+            "nhin lai xem",
+            "cơ mà",
+            "co ma",
+            "however",
+            "in practice",
+            "the point is",
+            "that said",
+        ]
+        found = [
+            (phrase, lowered.count(phrase))
+            for phrase in candidates
+            if phrase in lowered
+        ]
+        found.sort(key=lambda item: item[1], reverse=True)
+        return [phrase for phrase, _ in found[:12]]
+
+    def _split_sentences(self, text: str) -> list[str]:
+        candidates = re.split(r"(?<=[.!?。！？])\s+|\n{2,}", text)
+        return [
+            sentence.strip()
+            for sentence in candidates
+            if self._word_count(sentence) > 0
+        ]
+
+    @staticmethod
+    def _word_count(text: str) -> int:
+        return len(re.findall(r"\b[\w'-]+\b", text, flags=re.UNICODE))
+
+    @staticmethod
+    def _best_marker_label(
+        text: str,
+        options: dict[str, list[str]],
+        fallback: str,
+    ) -> str:
+        scores = {
+            label: sum(text.count(marker) for marker in markers)
+            for label, markers in options.items()
+        }
+        label, score = max(scores.items(), key=lambda item: item[1])
+        return label if score > 0 else fallback
 
     def _build_brand_identity(
         self,
@@ -550,6 +796,7 @@ class BrandVoiceService:
         syntax = profile.get("syntax", {})
         examples = profile.get("examples", [])
         do_dont = profile.get("do_dont_examples", {})
+        writing_fingerprint = profile.get("writing_fingerprint", {})
 
         lines = [
             f"# Brand Voice Profile: {profile.get('company_name', 'Company X')}",
@@ -564,6 +811,9 @@ class BrandVoiceService:
             "",
             "## Audience Personas",
             json.dumps(profile.get("audience_personas", []), ensure_ascii=False, indent=2),
+            "",
+            "## Writing Fingerprint",
+            json.dumps(writing_fingerprint, ensure_ascii=False, indent=2),
             "",
             "## Strategic Context",
             json.dumps(profile.get("strategic_context", {}), ensure_ascii=False, indent=2),
@@ -705,6 +955,7 @@ class BrandVoiceService:
         channel_guidelines = profile.get("channel_guidelines", {}).get(channel, {})
         brand_identity = profile.get("brand_identity", {})
         persona = self._select_persona(profile.get("audience_personas", []), persona_name)
+        writing_fingerprint = profile.get("writing_fingerprint", {})
         forbidden_terms = list(vocabulary.get("forbidden_terms", []))
         forbidden_terms.extend(profile.get("dictionary", {}).get("forbidden_replacements", {}).keys())
         preferred_terms = [
@@ -785,6 +1036,13 @@ class BrandVoiceService:
             if persona_terms and len(persona_hits) < min(2, len(persona_terms)):
                 recommendations.append(f"Adapt the piece more clearly for persona: {persona.get('name')}.")
 
+        fingerprint_score, fingerprint_violations, fingerprint_recommendations = self._score_writing_fingerprint(
+            content,
+            writing_fingerprint,
+        )
+        violations.extend(fingerprint_violations)
+        recommendations.extend(fingerprint_recommendations)
+
         if not violations:
             recommendations.append("Save this as a potential gold-standard output if human review agrees.")
         else:
@@ -798,8 +1056,88 @@ class BrandVoiceService:
             "channel_fit": max(0, min(100, channel_score)),
             "identity_alignment": max(0, min(100, identity_score)),
             "persona_fit": max(0, min(100, persona_score)),
+            "writing_fingerprint_fit": max(0, min(100, fingerprint_score)),
         }
         return scores, violations, recommendations
+
+    def _score_writing_fingerprint(
+        self,
+        content: str,
+        writing_fingerprint: dict[str, Any],
+    ) -> tuple[int, list[str], list[str]]:
+        if not writing_fingerprint:
+            return 85, [], []
+
+        target_patterns = writing_fingerprint.get("sentence_patterns", {})
+        target_vocab = writing_fingerprint.get("vocabulary_fingerprints", {})
+        target_perspective = writing_fingerprint.get("perspective_matching", {})
+        content_metrics = self._text_style_metrics(content)
+        content_perspective = self._infer_perspective(content)
+        lowered = content.lower()
+
+        score = 100
+        violations = []
+        recommendations = []
+
+        target_avg = float(target_patterns.get("average_sentence_words") or 0)
+        if target_avg > 0:
+            avg_diff = abs(float(content_metrics["average_sentence_words"]) - target_avg)
+            score -= min(25, int(avg_diff * 2))
+            if avg_diff > 8:
+                recommendations.append("Adjust sentence length closer to the learned writing fingerprint.")
+
+        for key, label in [
+            ("short_fragment_ratio", "short fragment rhythm"),
+            ("rhetorical_question_ratio", "rhetorical question rhythm"),
+            ("parenthetical_aside_ratio", "parenthetical aside rhythm"),
+        ]:
+            target_value = float(target_patterns.get(key) or 0)
+            actual_value = float(content_metrics.get(key) or 0)
+            diff = abs(actual_value - target_value)
+            score -= min(12, int(diff * 100))
+            if target_value >= 0.05 and actual_value < target_value / 2:
+                recommendations.append(f"Use more {label} to match the source style.")
+
+        target_dash = float(target_patterns.get("dash_usage_per_1000_words") or 0)
+        actual_dash = float(content_metrics.get("dash_usage_per_1000_words") or 0)
+        dash_diff = abs(actual_dash - target_dash)
+        score -= min(10, int(dash_diff * 2))
+
+        target_active = float(target_patterns.get("active_voice_ratio") or 0)
+        actual_active = float(content_metrics.get("active_voice_ratio") or 0)
+        if target_active and actual_active + 0.15 < target_active:
+            score -= 10
+            recommendations.append("Prefer active voice to match the learned sentence pattern.")
+
+        transition_phrases = [
+            phrase for phrase in target_vocab.get("transition_phrases", [])
+            if isinstance(phrase, str) and phrase.strip()
+        ]
+        if transition_phrases and not any(phrase.lower() in lowered for phrase in transition_phrases):
+            score -= 8
+            recommendations.append("Reuse learned transition phrases where they fit naturally.")
+
+        forbidden_cliches = [
+            phrase for phrase in target_vocab.get("forbidden_cliches", [])
+            if isinstance(phrase, str) and phrase.strip()
+        ]
+        cliche_hits = sorted({phrase for phrase in forbidden_cliches if phrase.lower() in lowered})
+        if cliche_hits:
+            score -= min(30, len(cliche_hits) * 10)
+            violations.append(f"Writing fingerprint cliches found: {', '.join(cliche_hits)}")
+
+        for key, label in [
+            ("self_reference", "self-reference"),
+            ("reader_address", "reader address"),
+            ("stance", "stance"),
+        ]:
+            expected = str(target_perspective.get(key) or "").strip()
+            actual = str(content_perspective.get(key) or "").strip()
+            if expected and expected not in ("unspecified", "reader") and actual != expected:
+                score -= 8
+                recommendations.append(f"Match the learned {label}: expected '{expected}', saw '{actual}'.")
+
+        return max(0, min(100, score)), violations, recommendations
 
     def _select_persona(
         self,
@@ -873,6 +1211,7 @@ class BrandVoiceService:
             "vocabulary": profile.get("vocabulary", {}),
             "syntax": profile.get("syntax", {}),
             "presentation": profile.get("presentation", {}),
+            "writing_fingerprint": profile.get("writing_fingerprint", {}),
             "rubrics": profile.get("rubrics", []),
             "channel_guidelines": profile.get("channel_guidelines", {}).get(channel, {}),
         }
@@ -883,7 +1222,7 @@ class BrandVoiceService:
             "Return only valid JSON with this schema:\n"
             "{\n"
             '  "overall_score": 0,\n'
-            '  "dimension_scores": {"identity_alignment": 0, "persona_fit": 0, "tone_alignment": 0, "vocabulary": 0, "structure": 0},\n'
+            '  "dimension_scores": {"identity_alignment": 0, "persona_fit": 0, "tone_alignment": 0, "vocabulary": 0, "structure": 0, "writing_fingerprint_fit": 0},\n'
             '  "violations": [],\n'
             '  "recommendations": [],\n'
             '  "rationale": ""\n'

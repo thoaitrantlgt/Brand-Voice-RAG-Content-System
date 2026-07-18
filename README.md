@@ -53,7 +53,7 @@ flowchart LR
 | LLM Providers | Google, OpenAI-compatible API, Anthropic, HuggingFace, Ollama |
 | RAG | LangChain loaders, ChromaDB, sentence-transformers |
 | Storage | SQLite for blogs and review records, ChromaDB for embeddings |
-| Evaluation | Rule-based style checks, Brand Voice heuristics, optional LLM-as-judge |
+| Evaluation | Rule-based style checks, Writing Fingerprint fit, Brand Voice heuristics, optional LLM-as-judge |
 | Tests | Pytest, pytest-asyncio, mocked RAG/vector dependencies |
 
 ---
@@ -166,6 +166,8 @@ sequenceDiagram
     API->>DB: Save draft/published post
 ```
 
+Before Writer and Editor run, `ContentService` loads `corporate_style_guide.json` and the active `brand_voice_profile.json`. The prompt includes brand identity, audience personas, writing fingerprint metrics, preferred vocabulary, forbidden terms, do/don't examples, and reviewer rubrics. After generation, deterministic style checks run again before the response is returned.
+
 ### 2. Knowledge Hub / RAG
 
 ```text
@@ -183,15 +185,17 @@ Document purpose:
 - `brand_voice`: approved writing samples for voice training.
 - `both`: useful as both reference and voice sample.
 
-### 3. Brand Voice v2.1
+### 3. Brand Voice v2.2
 
 Brand Voice now supports:
 
 - Brand identity: mission, vision, positioning, value proposition, personality traits.
 - Audience personas: priorities, tone adjustment, channels, decision criteria.
+- Writing Fingerprint: sentence rhythm, punctuation habits, transition phrases, pronoun style, argument stance.
 - Do/don't examples.
 - Channel guidance for blog, email, social, support, ads.
-- Heuristic evaluation plus optional LLM-as-judge.
+- Heuristic evaluation for voice, identity, persona, structure, and writing fingerprint fit.
+- Optional LLM-as-judge for deeper review.
 - Human review records stored in SQLite for a feedback loop.
 
 ```mermaid
@@ -237,18 +241,30 @@ Detailed pipeline:
 7. The LLM extraction agent analyzes the reconstructed blog posts and extracts:
    - `brand_identity`: mission, vision, positioning, traits, differentiators.
    - `audience_personas`: persona, priorities, tone adjustment, decision criteria.
+   - `writing_fingerprint`: sentence patterns, vocabulary fingerprints, perspective matching.
    - `tone`: primary tone, secondary tone, description.
    - `vocabulary`: repeated terms, preferred phrases, forbidden terms, replacements.
    - `syntax`: average sentence length, sentence style, syntax rules.
    - `presentation`: heading style, list style, article structure.
    - `do_dont_examples`, examples, rubrics.
-8. If the LLM extraction fails, the system uses a deterministic fallback:
+8. The backend also computes deterministic writing-fingerprint metrics so the profile does not depend only on the LLM:
+   - average sentence length,
+   - short-fragment ratio,
+   - rhetorical-question ratio,
+   - dash usage per 1,000 words,
+   - parenthetical-aside ratio,
+   - active-voice ratio,
+   - punctuation profile,
+   - transition phrases,
+   - self-reference and reader-address style,
+   - stance such as mentor, peer, or contrarian.
+9. If the LLM extraction fails, the system uses a deterministic fallback:
    - regex tokenization to extract words and terms,
    - `Counter` to identify repeated terms,
    - regex sentence splitting to estimate average sentence length,
    - representative sentences as examples,
    - a starter tone/rubric profile.
-9. The generated profile is written to `backend/config/brand_voice_profile.json`, SFT/DPO seed datasets are exported, and the profile Markdown is indexed back into ChromaDB so Writer/Editor agents can retrieve it later.
+10. The generated profile is written to `backend/config/brand_voice_profile.json`, SFT/DPO seed datasets are exported, and the profile Markdown is indexed back into ChromaDB so Writer/Editor agents can retrieve it later.
 
 In short:
 
@@ -256,10 +272,75 @@ In short:
 Old approved blogs
   -> chunk/index
   -> reconstruct by document_id
-  -> extract identity/tone/vocabulary/syntax/presentation
+  -> extract identity/fingerprint/tone/vocabulary/syntax/presentation
   -> build reusable Brand Voice Profile
   -> enforce/evaluate future drafts
 ```
+
+Writing Fingerprint metrics:
+
+| Metric | What It Captures | Why It Matters |
+| --- | --- | --- |
+| `average_sentence_words` | Average sentence length | Keeps the draft close to the source rhythm |
+| `short_fragment_ratio` | Ratio of 2-4 word fragments | Preserves punchy emphasis such as "Not really." |
+| `rhetorical_question_ratio` | How often sentences end with `?` | Detects question-led argument style |
+| `dash_usage_per_1000_words` | Em dash/en dash/spaced hyphen usage | Captures aside-heavy or contrast-heavy writing |
+| `parenthetical_aside_ratio` | Parenthetical insertions | Captures personal notes and side thoughts |
+| `active_voice_ratio` | Approximate active/passive balance | Keeps the writing direct |
+| `punctuation_per_1000_words` | Commas, colons, semicolons, dashes, parentheses | Captures punctuation fingerprint |
+| `transition_phrases` | Repeated connectors such as "thuc ra thi", "khong han" | Preserves natural connective tissue |
+| `self_reference` | "toi", "minh", "chung toi", "we" | Matches narrator identity |
+| `reader_address` | "ban", "anh em", "developer", "team" | Matches how the writer speaks to readers |
+| `stance` | mentor, peer, or contrarian | Captures the writer's argumentative posture |
+
+---
+
+## Internal Release Workflow
+
+The production path is project-scoped and asynchronous:
+
+```text
+Knowledge documents --------------------> grounded retrieval + citations
+Approved 4-5 star brand samples --------> versioned Brand Voice Profile
+Brief -> plan job -> editable outline -> generate job -> quality gate
+      -> human review -> approval -> publish
+```
+
+Key operational rules:
+
+- Run both the API and `backend/worker.py`; generation and profile training are queued jobs.
+- Activate one immutable profile version per project. Generation runs retain the exact `profile_id` used.
+- Keep factual sources in the `knowledge` cluster and writing samples in `brand_voice`.
+- Only explicitly approved, high-rated writing samples are eligible for profile training.
+- Publishing is blocked until a reviewer approves the generation run.
+- `/health` reports process liveness; `/ready` checks SQLite, vector storage, and the expected LM Studio model.
+- Set `AUTH_ENABLED=true` and configure `INTERNAL_ACCESS_TOKENS` outside local development.
+
+Build once and start the complete local production stack from the repository root:
+
+```powershell
+cd frontend
+npm.cmd run build
+cd ..
+.\scripts\start_internal.ps1
+```
+
+For an explicitly insecure local-only session with `AUTH_ENABLED=false`, use `.\scripts\start_internal.ps1 -AllowInsecureLocal`.
+
+Open `http://127.0.0.1:3000`. Stop it with:
+
+```powershell
+.\scripts\stop_internal.ps1
+```
+
+Create a runtime backup from `backend/`:
+
+```powershell
+.\.venv\Scripts\python.exe scripts\backup_runtime.py backup `
+  --backup-dir ..\backups\contentos-YYYYMMDD
+```
+
+Before releasing a model/profile combination, run the fixed evaluation set and require at least 80% overall pass rate, 100% citation coverage for factual claims, no critical style violations, and a documented human review sample.
 
 ---
 
@@ -335,9 +416,9 @@ AI_PROVIDER=openai
 OPENAI_API_KEY=dummy_key_for_local_server
 OPENAI_API_BASE=http://127.0.0.1:1234/v1
 
-PLANNER_MODEL=qwen3-1.7b
-WRITER_MODEL=qwen3-1.7b
-EDITOR_MODEL=qwen3-1.7b
+PLANNER_MODEL=qwen3.5-2b
+WRITER_MODEL=qwen3.5-2b
+EDITOR_MODEL=qwen3.5-2b
 
 DEBUG=false
 ```
@@ -414,6 +495,46 @@ curl -X POST http://127.0.0.1:8000/api/v1/documents/brand-voice/train `
   }'
 ```
 
+The generated `brand_voice_profile.json` includes a machine-readable writing fingerprint:
+
+```json
+{
+  "brand_identity": {
+    "mission": "Make AI content practical for business teams.",
+    "positioning": "Practical AI content advisor.",
+    "personality_traits": ["clear", "credible", "direct"]
+  },
+  "audience_personas": [
+    {
+      "name": "Marketing lead",
+      "priorities": ["clarity", "pipeline impact"],
+      "tone_adjustment": "Strategic and direct."
+    }
+  ],
+  "writing_fingerprint": {
+    "sentence_patterns": {
+      "average_sentence_words": 14.6,
+      "short_fragment_ratio": 0.12,
+      "rhetorical_question_ratio": 0.05,
+      "dash_usage_per_1000_words": 2.8,
+      "parenthetical_aside_ratio": 0.03,
+      "active_voice_ratio": 0.91
+    },
+    "vocabulary_fingerprints": {
+      "preferred_terms": ["core", "practical", "workflow"],
+      "transition_phrases": ["thuc ra thi", "khong han"],
+      "forbidden_cliches": ["trong kỷ nguyên số", "đột phá", "toàn diện"]
+    },
+    "perspective_matching": {
+      "self_reference": "tôi",
+      "reader_address": "bạn",
+      "stance": "mentor",
+      "argument_style": "explain_then_recommend"
+    }
+  }
+}
+```
+
 ### Evaluate With Optional LLM Judge
 
 ```powershell
@@ -426,6 +547,26 @@ curl -X POST http://127.0.0.1:8000/api/v1/documents/brand-voice/evaluate `
     "use_llm_judge": true,
     "content": "# Example Title\n\n## Section\n\nYour generated draft here..."
   }'
+```
+
+Evaluation returns `dimension_scores`, including:
+
+```json
+{
+  "overall_score": 87,
+  "dimension_scores": {
+    "tone_alignment": 92,
+    "vocabulary": 83,
+    "readability": 90,
+    "structure": 100,
+    "channel_fit": 90,
+    "identity_alignment": 84,
+    "persona_fit": 81,
+    "writing_fingerprint_fit": 76,
+    "llm_judge": 88
+  },
+  "evaluation_method": "heuristic_plus_llm_judge"
+}
 ```
 
 ### Store Human Review
@@ -443,6 +584,119 @@ curl -X POST http://127.0.0.1:8000/api/v1/documents/brand-voice/reviews `
     "content": "# Example Title\n\n## Section\n\nReviewed draft..."
   }'
 ```
+
+---
+
+## Offline Evaluation With Blog Authorship Corpus
+
+The `barilan/blog_authorship_corpus` dataset is useful as an authorship-style benchmark for `writing_fingerprint_fit`. Use it for research/evaluation, not for production brand voice training.
+
+Benchmark goal:
+
+```text
+Build a fingerprint from Author A source posts
+  -> score unseen posts from Author A as positives
+  -> score posts from other authors as negatives
+  -> measure same-author vs different-author separation
+```
+
+Recommended default:
+
+```json
+{
+  "use_llm_judge": false,
+  "scoring_mode": "hybrid",
+  "stylometry_weight": 0.85,
+  "top_char_ngrams": 300,
+  "negative_sampling": "hard"
+}
+```
+
+The benchmark score blends two signals:
+
+- `heuristic_score`: the existing `writing_fingerprint_fit` rules from Brand Voice evaluation.
+- `stylometric_similarity`: cosine similarity over style vectors built from sentence shape, punctuation distribution, function words, suffix habits, and source-character trigrams.
+
+This keeps evaluation offline and deterministic while capturing more real author-style signal than rule checks alone.
+
+### 1. Prepare Raw Dataset
+
+Download `blogs.zip` yourself from the dataset page, then run:
+
+```powershell
+cd backend
+$env:DEBUG='false'
+.\.venv\Scripts\python.exe scripts\prepare_blog_authorship_eval.py `
+  --input C:\path\to\blogs.zip `
+  --output-dir data\eval\blog_authorship `
+  --min-words-per-post 150 `
+  --max-words-per-post 2000 `
+  --min-posts-per-author 8
+```
+
+Outputs:
+
+```text
+backend/data/eval/blog_authorship/processed_posts.jsonl
+backend/data/eval/blog_authorship/author_index.json
+```
+
+Each JSONL row keeps the author metadata needed for same-author and hard-negative evaluation:
+
+```json
+{
+  "post_id": "5114:0",
+  "author_id": "5114",
+  "gender": "male",
+  "age": 25,
+  "job": "indUnk",
+  "horoscope": "Sagittarius",
+  "date": "01,August,2004",
+  "word_count": 420,
+  "text": "Cleaned blog post..."
+}
+```
+
+### 2. Run Writing Fingerprint Benchmark
+
+```powershell
+.\.venv\Scripts\python.exe scripts\run_writing_fingerprint_benchmark.py `
+  --posts data\eval\blog_authorship\processed_posts.jsonl `
+  --output-dir data\eval\blog_authorship\benchmark_runs\run01 `
+  --max-authors 200 `
+  --negative-sampling hard `
+  --scoring-mode hybrid `
+  --stylometry-weight 0.85 `
+  --top-char-ngrams 300
+```
+
+Outputs:
+
+```text
+benchmark_runs/run01/config.json
+benchmark_runs/run01/summary.json
+benchmark_runs/run01/author_results.csv
+benchmark_runs/run01/pair_results.csv
+benchmark_runs/run01/report.md
+benchmark_runs/run01/false_positives.jsonl
+benchmark_runs/run01/false_negatives.jsonl
+benchmark_runs/run01/profiles/
+```
+
+Core metrics:
+
+| Metric | Meaning |
+| --- | --- |
+| `same_author_avg` | Average final benchmark score for unseen posts from the same author |
+| `different_author_avg` | Average score for posts from other authors |
+| `separation_gap` | `same_author_avg - different_author_avg`; higher is better |
+| `heuristic_same_author_avg` / `heuristic_different_author_avg` | Baseline rule-based Writing Fingerprint scores |
+| `stylometry_same_author_avg` / `stylometry_different_author_avg` | Stylometric similarity scores |
+| `roc_auc` | Pairwise ranking quality between positive and negative samples |
+| `best_threshold` | Threshold with best accuracy on the benchmark run |
+| `accuracy_at_threshold` | Same-author/different-author classification accuracy |
+
+The benchmark is deterministic by default. It builds profiles from local heuristic extraction and does not call an LLM unless `use_llm_judge` is enabled in a custom config.
 
 ---
 
