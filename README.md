@@ -1,89 +1,63 @@
 <h1 align="center">AI Content OS</h1>
 <p align="center"><strong>Project-scoped, review-gated AI writing for internal content teams.</strong></p>
 
-AI Content OS is an internal, local-first writing workflow for teams that need factual grounding, approved brand voice, repeatable review, and project isolation. It combines a FastAPI API, a separate background worker, SQLite metadata, Chroma vectors, and a Next.js operations UI.
+AI Content OS combines FastAPI, a background worker, SQLite, ChromaDB, CrewAI, LM Studio, and a Next.js operations UI. It turns approved source material into grounded blog drafts while keeping project data isolated and requiring human approval before publication.
 
-The supported product path is asynchronous and project-scoped. It creates persisted jobs and generation runs, keeps the selected brand profile immutable for each run, records citations and quality results, and requires human approval before publishing.
+> **Release status:** ready for an internal pilot. The fixed 25-topic quality benchmark is still outstanding, so this is not yet an unqualified public release.
 
-> **Release status:** the fixed 25-topic release benchmark has not passed. The product is suitable for an internal pilot, not an unqualified public quality release.
+## Why It Exists
 
-## Product Model
+The system keeps facts and writing style separate:
 
-Each project is a data and authorization boundary. Users with a scoped token can only access their assigned projects; an administrator can manage projects, profiles, and approval workflows.
+| Cluster | Content | Generation use |
+| --- | --- | --- |
+| `knowledge` | Product facts, references, and source documents | Grounds factual claims and produces citations |
+| `brand_voice` | Candidate writing samples | Trains profiles only after reviewer approval with rating 4 or 5 |
+| `evaluation` | Held-out evaluation material | Never used for generation |
 
-The system deliberately separates two retrieval clusters:
+Profiles are immutable and versioned per project. Every generation run records the exact profile version, citations, attempts, quality report, reviewer decision, and final publication state.
 
-| Cluster | Holds | Used for | Must not be used as |
-| --- | --- | --- | --- |
-| `knowledge` | Factual references, product material, and source documents | Grounding factual claims and collecting citations | A source of writing style |
-| `brand_voice` | Explicitly approved, high-rated writing samples | Training and selecting a versioned Brand Voice Profile | A source of factual claims |
-
-An optional `evaluation` cluster is reserved for evaluation data and is excluded from generation retrieval. The separation prevents style samples from being treated as evidence and prevents factual sources from silently defining a brand voice.
-
-Only approved high-rated samples belong in `brand_voice`. A profile is versioned per project, and a generation run retains the exact `profile_id` and profile version used to make it reproducible.
-
-## Asynchronous Workflow
+## Workflow
 
 ```mermaid
 flowchart LR
-    A[Create project] --> B[Upload project documents]
-    B --> C{Cluster}
-    C -->|knowledge| D[Factual grounding]
-    C -->|brand_voice, approved| E[Async profile-training job]
-    E --> F[Activate immutable profile]
-    F --> G[Create async generation run]
-    D --> G
-    G --> H[Planner job]
-    H --> I[Edit outline]
-    I --> J[Writer and Editor job]
-    J --> K[Quality gate, citations, up to 2 rewrites]
-    K --> L[Human reviewer approval]
-    L --> M[Publish]
+    A[Upload sources] --> B{Cluster}
+    B -->|knowledge| C[Grounded retrieval]
+    B -->|brand_voice| D[Review samples]
+    D --> E[Train and activate profile]
+    C --> F[Plan job]
+    E --> F
+    F --> G[Editable outline]
+    G --> H[Writer and Editor job]
+    H --> I[Quality gate and up to 2 rewrites]
+    I --> J[Human review]
+    J --> K[Publish]
 ```
 
-The API returns `202 Accepted` for queued planning, generation, and profile-training work. Start both the API process and `backend/worker.py`; the worker claims persisted jobs and advances run state.
+Planning, generation, and profile training are asynchronous. The API persists jobs in SQLite; `backend/worker.py` processes them and supports retry and crash recovery.
 
-## Features And Routes
+## Product Surface
 
-### Primary API Surface
+| Route | Purpose |
+| --- | --- |
+| `/` | Operational dashboard |
+| `/create` | Brief, planning, outline editing, generation, and quality results |
+| `/review` | Content editing, scoring, approval, rejection, and publishing |
+| `/rag` | Projects, source clusters, sample approval, and profile versions |
+| `/blogs` | Project-scoped drafts and published posts |
 
-Business APIs are under `/api/v1` and require a bearer token when authentication is enabled. System endpoints `GET /health` and `GET /ready` are root routes.
-
-| Method | Route | Role | Purpose |
-| --- | --- | --- | --- |
-| `GET` | `/projects` | writer | List accessible projects |
-| `POST` | `/projects` | admin | Create a project |
-| `POST` | `/documents/upload` | writer | Upload and index a project document |
-| `GET` | `/documents?project_id={id}` | writer | List project documents |
-| `POST` | `/documents/search` | writer | Search a project and cluster |
-| `POST` | `/projects/{project_id}/documents/{document_id}/approval` | reviewer | Approve or rate a brand sample |
-| `GET` | `/projects/{project_id}/profiles` | writer | List project profile versions |
-| `POST` | `/projects/{project_id}/profiles/train` | admin | Queue profile training |
-| `POST` | `/projects/{project_id}/profiles/{profile_id}/activate` | admin | Activate a profile version |
-| `POST` | `/projects/{project_id}/generation-runs` | writer | Create a run and queue planning |
-| `GET` | `/generation-runs/{run_id}` | writer | Read a run and its quality state |
-| `PATCH` | `/generation-runs/{run_id}/outline` | writer | Update a ready outline |
-| `POST` | `/generation-runs/{run_id}/generate` | writer | Queue writing and editing |
-| `POST` | `/generation-runs/{run_id}/review` | reviewer | Record approval, score, notes, and edits |
-| `POST` | `/generation-runs/{run_id}/publish` | reviewer | Publish an approved run |
-| `GET` | `/jobs/{job_id}` | writer | Poll queued, running, failed, or completed work |
-| `POST` | `/jobs/{job_id}/retry` | writer | Retry an eligible failed job |
-
-### Legacy APIs
-
-The synchronous content endpoints, `/api/v1/content/titles`, `/api/v1/content/generate`, and `/api/v1/content/rewrite`, are legacy compatibility routes. They are disabled by default through `ENABLE_LEGACY_SYNC_API=false`; disabled requests return `404`.
-
-The synchronous brand-profile endpoints under `/api/v1/documents/brand-voice/*` are retired. They return `410 Gone` with direction to use the project-scoped asynchronous profile workflow.
-
-Do not build new integrations against either legacy surface. Use the project, profile, generation-run, and job routes above.
+Business APIs are under `/api/v1`. `GET /health` and `GET /ready` are root system endpoints.
 
 ## Quick Start
 
-### Prerequisites
+### Requirements
 
-Use PowerShell 7.0+ for multipart uploads, Python 3.12-compatible tooling, Node.js for Next.js 16, and LM Studio with `qwen3.5-2b` loaded. There is no root package manifest or task runner.
+- Python 3.12-compatible environment
+- Node.js and npm
+- PowerShell 7 for multipart upload examples
+- LM Studio serving `qwen3.5-2b` at `http://127.0.0.1:1234/v1`
 
-### 1. Prepare The Backend
+### 1. Backend
 
 ```powershell
 cd backend
@@ -92,7 +66,7 @@ python -m venv .venv
 Copy-Item .env.example .env
 ```
 
-Configure LM Studio to serve `http://127.0.0.1:1234/v1`, then set the model and secure access values in `backend/.env`:
+Set these values in `backend/.env`:
 
 ```env
 RUN_MODE=cloud
@@ -103,13 +77,14 @@ PLANNER_MODEL=qwen3.5-2b
 WRITER_MODEL=qwen3.5-2b
 EDITOR_MODEL=qwen3.5-2b
 AUTH_ENABLED=true
-INTERNAL_ACCESS_TOKENS={"replace-admin-token":{"username":"Admin","role":"admin","projects":["acme"]},"replace-writer-token":{"username":"Writer","role":"writer","projects":["acme"]},"replace-review-token":{"username":"Reviewer","role":"reviewer","projects":["acme"]}}
+ALLOW_INSECURE_AUTH=false
 ENABLE_LEGACY_SYNC_API=false
+INTERNAL_ACCESS_TOKENS={"REPLACE_ADMIN":{"username":"Admin","role":"admin","projects":["acme"]},"REPLACE_WRITER":{"username":"Writer","role":"writer","projects":["acme"]},"REPLACE_REVIEWER":{"username":"Reviewer","role":"reviewer","projects":["acme"]}}
 ```
 
-`RUN_MODE=cloud` uses LM Studio through an OpenAI-compatible HTTP API; `OPENAI_API_KEY` must be non-empty.
+Replace every `REPLACE_*` value with a unique secret before startup. Never commit `backend/.env`.
 
-### 2. Build The Frontend
+### 2. Frontend
 
 ```powershell
 cd ..\frontend
@@ -117,215 +92,122 @@ npm install
 npm.cmd run build
 ```
 
-### 3. Start Securely
+### 3. Run
 
-From the repository root, use secure startup once `AUTH_ENABLED=true` and `INTERNAL_ACCESS_TOKENS` contains at least one token:
+From the repository root:
 
 ```powershell
 cd ..
 .\scripts\start_internal.ps1
 ```
 
-### 4. Start Insecurely For Local Development Only
+Open `http://127.0.0.1:3000`. Check readiness at `http://127.0.0.1:8000/ready`.
 
-An insecure session must be explicitly enabled in `backend/.env`:
-
-```env
-AUTH_ENABLED=false
-ALLOW_INSECURE_AUTH=true
-```
-
-Then start only on a trusted local machine:
-
-```powershell
-.\scripts\start_internal.ps1 -AllowInsecureLocal
-```
-
-Do not use this mode on shared networks or for internal production traffic.
-
-### 5. Stop The Stack
+Stop all processes with:
 
 ```powershell
 .\scripts\stop_internal.ps1
 ```
 
-## Configuration
-
-`backend/.env.example` is the authoritative template. In secure deployments, set `AUTH_ENABLED=true`, supply a non-placeholder `INTERNAL_ACCESS_TOKENS` JSON registry, leave `ALLOW_INSECURE_AUTH=false` and `ENABLE_LEGACY_SYNC_API=false`, and point `PLANNER_MODEL`, `WRITER_MODEL`, and `EDITOR_MODEL` to `qwen3.5-2b`. `OPENAI_API_BASE`, `CHROMA_PERSIST_DIR`, and `UPLOAD_DIR` default to the LM Studio endpoint and local runtime locations shown above.
+For isolated local development only, set `AUTH_ENABLED=false` and `ALLOW_INSECURE_AUTH=true`, then run `start_internal.ps1 -AllowInsecureLocal`.
 
 ## Architecture
 
 ```mermaid
 flowchart TB
-    UI[Next.js internal UI] --> API[FastAPI /api/v1]
-    API --> Auth[Bearer token and project authorization]
-    API --> SQLite[(SQLite metadata and job state)]
-    API --> Chroma[(Chroma project-scoped vectors)]
-    Worker[Python background worker] --> SQLite
-    Worker --> LLM[LM Studio: qwen3.5-2b]
-    Worker --> Chroma
-    Worker --> SQLite
-    API --> Ready[/ready checks/]
-    Ready --> SQLite
-    Ready --> Chroma
-    Ready --> LLM
+    UI[Next.js UI] --> API[FastAPI]
+    API --> AUTH[Role and project authorization]
+    API --> DB[(SQLite jobs and metadata)]
+    API --> VECTOR[(Chroma vectors)]
+    WORKER[Background worker] --> DB
+    WORKER --> VECTOR
+    WORKER --> LLM[LM Studio / qwen3.5-2b]
+    READY[/ready] --> DB
+    READY --> VECTOR
+    READY --> LLM
 ```
 
-`frontend/` provides the operations UI; `backend/app/api/v1/` exposes routers; `backend/worker.py` consumes jobs; `backend/app/workers/` executes planning, generation, and training; and `backend/app/rag/` handles documents, embeddings, and filtered retrieval. SQLite owns transactional metadata and state transitions, while Chroma stores vectors with project, cluster, document, and profile metadata.
-
-## API Workflow
-
-This example uses PowerShell and a secure token. Replace placeholders before running it.
-
-```powershell
-$api = 'http://127.0.0.1:8000/api/v1'
-$adminHeaders = @{ Authorization = 'Bearer replace-admin-token'; 'Content-Type' = 'application/json' }
-$writerHeaders = @{ Authorization = 'Bearer replace-writer-token'; 'Content-Type' = 'application/json' }
-$writerUploadHeaders = @{ Authorization = 'Bearer replace-writer-token' }
-$reviewerHeaders = @{ Authorization = 'Bearer replace-review-token'; 'Content-Type' = 'application/json' }
+```text
+backend/app/api/v1/       HTTP routers
+backend/app/repositories/ SQLite persistence and state transitions
+backend/app/workers/      Planning, generation, and profile jobs
+backend/app/rag/          Loading, embeddings, retrieval, and Chroma
+backend/worker.py         Persistent job consumer
+frontend/app/             Next.js routes and shared workspace UI
+scripts/                  Local production start and stop scripts
 ```
 
-Create the `acme` project before using the project-scoped routes:
+## Supported API Flow
+
+The UI implements the complete workflow. For integrations, use the OpenAPI docs at `http://127.0.0.1:8000/docs`.
+
+| Method | Route | Minimum role |
+| --- | --- | --- |
+| `POST` | `/projects` | admin |
+| `POST` | `/documents/upload` | writer |
+| `POST` | `/projects/{project}/documents/{document}/approval` | reviewer |
+| `GET` | `/projects/{project}/profiles` | writer |
+| `POST` | `/projects/{project}/profiles/train` | admin |
+| `POST` | `/projects/{project}/profiles/{profile}/activate` | admin |
+| `POST` | `/projects/{project}/generation-runs` | writer |
+| `PATCH` | `/generation-runs/{run}/outline` | writer |
+| `POST` | `/generation-runs/{run}/generate` | writer |
+| `GET` | `/jobs/{job}` | writer |
+| `POST` | `/generation-runs/{run}/review` | reviewer |
+| `POST` | `/generation-runs/{run}/publish` | reviewer |
+
+Use this polling helper for queued operations:
 
 ```powershell
-Invoke-RestMethod -Method Post -Uri "$api/projects" -Headers $adminHeaders -Body (@{
-  project_id = 'acme'
-  name = 'Acme Content'
-  description = 'Internal content operations'
-} | ConvertTo-Json)
-```
-
-### Upload Sources Into The Right Cluster
-
-```powershell
-Invoke-RestMethod -Method Post -Uri "$api/documents/upload" `
-  -Headers $writerUploadHeaders `
-  -Form @{ file = Get-Item 'C:\sources\product-facts.pdf'; project_id = 'acme'; cluster = 'knowledge' }
-```
-
-Profile training requires at least five project-scoped `brand_voice` samples that a reviewer has marked `approved` with a human rating of 4 or 5.
-
-### Queue And Activate A Profile
-
-```powershell
-$sampleRoot = 'C:\sources\brand-voice'
-$brandSamples = @(Get-ChildItem -LiteralPath $sampleRoot -File |
-  Where-Object { $_.Extension -in '.pdf', '.txt', '.md', '.docx' } |
-  Select-Object -First 5)
-if ($brandSamples.Count -lt 5) { throw "Add at least five supported files to $sampleRoot." }
-
-$documentIds = foreach ($sample in $brandSamples) {
-  $upload = Invoke-RestMethod -Method Post -Uri "$api/documents/upload" `
-    -Headers $writerUploadHeaders `
-    -Form @{ file = $sample; project_id = 'acme'; purpose = 'brand_voice'; cluster = 'brand_voice' }
-  $upload.document_id
+function Wait-ContentJob($api, $jobId, $headers) {
+  do {
+    Start-Sleep -Seconds 1
+    $job = Invoke-RestMethod -Uri "$api/jobs/$jobId" -Headers $headers
+  } while ($job.status -in @('queued', 'running'))
+  if ($job.status -ne 'succeeded') { throw ($job.error | ConvertTo-Json -Compress) }
+  return $job
 }
-if ($documentIds.Count -lt 5) { throw 'Fewer than five brand samples were uploaded.' }
-
-foreach ($documentId in $documentIds) {
-  Invoke-RestMethod -Method Post -Uri "$api/projects/acme/documents/$documentId/approval" `
-    -Headers $reviewerHeaders `
-    -Body (@{ status = 'approved'; human_rating = 4 } | ConvertTo-Json)
-}
-
-Invoke-RestMethod -Method Post -Uri "$api/projects/acme/profiles/train" `
-  -Headers $adminHeaders `
-  -Body (@{ name = 'Acme editorial voice'; document_ids = $documentIds; min_documents = 5; max_documents = 5 } | ConvertTo-Json)
 ```
 
-Poll the returned `job.job_id`, then list profiles before selecting one to activate:
+Profile training requires at least five `brand_voice` uploads approved by a reviewer with `human_rating` 4 or 5. Capture each upload response's `document_id`, approve those exact IDs, queue training, and wait for the returned `job.job_id` before listing and activating the new profile.
 
-```powershell
-$profiles = Invoke-RestMethod -Uri "$api/projects/acme/profiles" -Headers $writerHeaders
-$profileId = $profiles[0].profile_id
-Invoke-RestMethod -Method Post -Uri "$api/projects/acme/profiles/$profileId/activate" -Headers $adminHeaders
-```
+Generation follows the same pattern: create a run, wait for its planning job, edit the returned outline, queue generation, wait for the generation job, then send the run to a reviewer. Publishing is rejected until the run is approved.
 
-### Create, Plan, And Generate A Run
+### Legacy APIs
 
-```powershell
-$run = Invoke-RestMethod -Method Post -Uri "$api/projects/acme/generation-runs" `
-  -Headers $writerHeaders `
-  -Body (@{
-    topic = 'How to evaluate product documentation'
-    keywords = @('documentation', 'evaluation')
-    audience = 'Product leaders'
-    objective = 'Provide a practical internal evaluation checklist.'
-    channel = 'blog'
-  } | ConvertTo-Json)
+- Synchronous `/content/*` routes are disabled by default with `ENABLE_LEGACY_SYNC_API=false` and return `404`.
+- Synchronous `/documents/brand-voice/*` routes are retired and return `410 Gone`.
 
-Invoke-RestMethod -Uri "$api/jobs/$($run.job.job_id)" -Headers $writerHeaders
-```
+New integrations must use project-scoped jobs and generation runs.
 
-After planning reaches `outline_ready`, edit the outline if needed and queue generation:
+## Verified Evidence
 
-```powershell
-Invoke-RestMethod -Method Patch -Uri "$api/generation-runs/$($run.run_id)/outline" `
-  -Headers $writerHeaders `
-  -Body (@{ outline = @('# Working outline', '## Section one') } | ConvertTo-Json)
-
-Invoke-RestMethod -Method Post -Uri "$api/generation-runs/$($run.run_id)/generate" `
-  -Headers $writerHeaders
-```
-
-Read the run and its job until generation completes; it exposes content, citations, quality information, profile identity, rewrite count, and state.
-
-### Review And Publish
-
-```powershell
-Invoke-RestMethod -Method Post -Uri "$api/generation-runs/$($run.run_id)/review" `
-  -Headers $reviewerHeaders `
-  -Body (@{ approved = $true; human_score = 4; notes = 'Approved for internal publication.' } | ConvertTo-Json)
-
-Invoke-RestMethod -Method Post -Uri "$api/generation-runs/$($run.run_id)/publish" `
-  -Headers $reviewerHeaders
-```
-
-Publication is guarded: a run without reviewer approval receives a conflict response instead of publishing.
-
-## Evaluation Evidence
-
-The following evidence demonstrates a working smoke path. It is not a claim that the release gate has been met.
-
-| Verified item | Result |
+| Check | Result |
 | --- | --- |
-| Backend suite | 50 tests verified |
-| Readiness model | `qwen3.5-2b` available through LM Studio readiness checks |
-| TSS smoke brand score | 87 |
-| TSS smoke style score | 92 |
-| TSS smoke writing fingerprint score | 45 |
-| TSS smoke persona score | 55 |
-| TSS smoke grounding coverage | 1.0 |
-| TSS smoke citations | 2 |
-| Targeted rewrites | 2 maximum attempts |
-| Publication control | Human approval required |
+| Backend suite | 50 tests passed |
+| Frontend | ESLint and production build passed |
+| Readiness | SQLite, Chroma, and `qwen3.5-2b` ready |
+| TSS smoke | Brand 87, style 92, fingerprint 45, persona 55 |
+| Grounding | 1.0 coverage, 2 citations |
+| Rewrite loop | 2 targeted rewrites |
+| Publication | Human approval required |
 
-The TSS smoke result confirms that the end-to-end flow can obtain citations, complete quality processing, and preserve review controls. It does not demonstrate broad quality, reliable fingerprint matching, or a passed release benchmark.
-
-The fixed 25-topic release benchmark remains outstanding. Until it passes, use this product as an internal pilot with reviewer oversight rather than as an unqualified public quality release.
-
-For evaluation methodology, quality thresholds, data splits, and known limits, read [PIPELINE_EVALUATION_PLAN.md](PIPELINE_EVALUATION_PLAN.md).
+The smoke run proves the operational path, not broad writing quality. The fingerprint score of 45 remained below threshold and required reviewer judgment. Run and document the fixed 25-topic benchmark before claiming a public quality release.
 
 ## Operations
 
-### Health And Readiness
+### Tests
 
-| Endpoint | Meaning |
-| --- | --- |
-| `GET /health` | Process liveness and configured provider information |
-| `GET /ready` | SQLite, vector storage, and expected LM Studio model readiness |
+```powershell
+cd backend
+.\.venv\Scripts\python.exe -m pytest
 
-Use `/ready` for operational readiness. A live API can still be unready if its database, vector store, or expected `qwen3.5-2b` model is unavailable.
-
-### Logs And Process Management
-
-`scripts/start_internal.ps1` writes process IDs to `.runtime/processes.json` and redirects output to `.runtime/logs/`. It starts the API from `backend/run.py`, the worker from `backend/worker.py`, and the standalone Next.js server.
-
-The frontend production build must exist before startup. The script copies static build assets into the standalone output and rejects an unsafe auth configuration unless `-AllowInsecureLocal` is specified.
+cd ..\frontend
+npm.cmd run lint
+npm.cmd run build
+```
 
 ### Backup
-
-From the repository root, create a runtime backup after stopping write-heavy activity. Pass backend data and configuration paths explicitly because the script resolves its defaults from its working directory:
 
 ```powershell
 .\backend\.venv\Scripts\python.exe .\backend\scripts\backup_runtime.py backup `
@@ -334,67 +216,34 @@ From the repository root, create a runtime backup after stopping write-heavy act
   --backup-dir .\backups\contentos-YYYYMMDD
 ```
 
-The backup includes the SQLite database, Chroma data, uploads, generated brand artifacts, configuration, and a manifest. Use a new empty target directory for each backup.
+Restore during a maintenance window with the same script's `restore` action. `--force` replaces existing runtime destinations.
 
-Restore only into a planned maintenance window:
+### Docker
 
-```powershell
-.\backend\.venv\Scripts\python.exe .\backend\scripts\backup_runtime.py restore `
-  --data-dir .\backend\data `
-  --config-dir .\backend\config `
-  --backup-dir .\backups\contentos-YYYYMMDD `
-  --force
-```
-
-`--force` replaces existing runtime destinations. Verify the chosen backup and target before using it.
-
-## Security
-
-- Keep `AUTH_ENABLED=true` outside isolated local development.
-- Store non-placeholder `INTERNAL_ACCESS_TOKENS` outside source control and rotate them through the team secret process.
-- Treat `project_id` as a hard data boundary for documents, vectors, profiles, jobs, runs, and blogs.
-- Keep factual material in `knowledge` and approved samples in `brand_voice`; never use either cluster as a substitute for the other.
-- Require reviewer approval before publishing, even after automated checks pass.
-
-## Testing
-
-Run backend tests from `backend/`. The suite mocks RAG and vector dependencies and does not require API keys or a live Chroma service.
+With Docker and LM Studio running on the host:
 
 ```powershell
-cd backend
-$env:DEBUG = 'false'
-.\.venv\Scripts\python.exe -m pytest tests\test_health.py -v
-.\.venv\Scripts\python.exe -m pytest
+docker compose up --build -d
+docker compose ps
+docker compose down
 ```
 
-The verified baseline is 50 backend tests. Run the focused test first when working on a related backend area, then run the full suite when practical.
+`docker-compose.yml` forces secure auth settings for the API and worker. Configure real tokens in `backend/.env` before starting containers.
 
-Run frontend checks from `frontend/`:
+## Security And Release Checklist
 
-```powershell
-cd frontend
-npm.cmd run lint
-npm.cmd run build
-```
-
-Use `npm.cmd` on Windows if PowerShell execution policy blocks `npm.ps1`.
-
-## Release Checklist
-
-- [ ] Use a secure `.env`: authentication enabled, valid scoped tokens, and legacy sync APIs disabled.
-- [ ] Build the frontend production output with `npm.cmd run build`.
-- [ ] Start the API, worker, and frontend with `scripts/start_internal.ps1`.
-- [ ] Confirm `/health` is live and `/ready` verifies SQLite, Chroma, and `qwen3.5-2b`.
-- [ ] Verify `knowledge` sources are factual and `brand_voice` samples are explicitly approved and high-rated.
-- [ ] Train and activate the intended immutable profile version for each project.
-- [ ] Verify planning, generation, citation capture, bounded rewrites, human review, and guarded publishing.
-- [ ] Run focused and full backend tests, then frontend lint and build checks.
-- [ ] Create and validate a runtime backup.
-- [ ] Run the fixed 25-topic release benchmark and record results.
-- [ ] Do not claim a public quality release until that benchmark passes and reviewer evidence supports it.
+- [ ] Authentication enabled with unique, project-scoped tokens
+- [ ] Legacy synchronous APIs disabled
+- [ ] Knowledge and brand samples stored in the correct clusters
+- [ ] Brand samples explicitly approved and rated before training
+- [ ] Intended immutable profile activated for each project
+- [ ] `/ready` verifies SQLite, Chroma, and the expected model
+- [ ] Backend tests, frontend lint, and production build pass
+- [ ] Runtime backup created and verified
+- [ ] Human review enforced before publishing
+- [ ] Fixed 25-topic benchmark passed and recorded before public release
 
 ## Further Reading
 
-- [Pipeline evaluation plan](PIPELINE_EVALUATION_PLAN.md): project data model, cluster separation, evaluation criteria, and benchmark context.
-- [Internal ship-ready plan](docs/superpowers/plans/2026-07-17-internal-ship-ready.md): architecture, operational constraints, and implementation milestones.
-- [README redesign specification](docs/superpowers/specs/2026-07-18-readme-redesign-design.md): scope and editorial requirements for this guide.
+- [Internal ship-ready plan](docs/superpowers/plans/2026-07-17-internal-ship-ready.md)
+- [README redesign specification](docs/superpowers/specs/2026-07-18-readme-redesign-design.md)
