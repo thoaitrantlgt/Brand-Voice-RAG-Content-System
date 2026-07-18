@@ -1,14 +1,6 @@
-<p align="center">
-  <h1 align="center">AI Content OS</h1>
-  <p align="center"><strong>Project-scoped, review-gated AI writing for internal content teams.</strong></p>
-  <p align="center">
-    <img src="https://img.shields.io/badge/FastAPI-Backend-009688?style=flat-square&logo=fastapi&logoColor=white" alt="FastAPI" />
-    <img src="https://img.shields.io/badge/Next.js-16-black?style=flat-square&logo=nextdotjs" alt="Next.js" />
-    <img src="https://img.shields.io/badge/SQLite-Metadata-003B57?style=flat-square&logo=sqlite&logoColor=white" alt="SQLite" />
-    <img src="https://img.shields.io/badge/Chroma-Vector%20Storage-ff6f61?style=flat-square" alt="Chroma" />
-    <img src="https://img.shields.io/badge/Backend%20tests-50%20verified-2ea44f?style=flat-square" alt="50 verified backend tests" />
-  </p>
-</p>
+<h1 align="center">AI Content OS</h1>
+
+<p align="center"><strong>Project-scoped, review-gated AI writing for internal content teams.</strong></p>
 
 AI Content OS is an internal, local-first writing workflow for teams that need factual grounding, approved brand voice, repeatable review, and project isolation. It combines a FastAPI API, a separate background worker, SQLite metadata, Chroma vectors, and a Next.js operations UI.
 
@@ -78,6 +70,7 @@ All application routes are under `/api/v1` and require a bearer token when authe
 | `GET` | `/documents?project_id={id}` | writer | List project documents |
 | `POST` | `/documents/search` | writer | Search a project and cluster |
 | `POST` | `/projects/{project_id}/documents/{document_id}/approval` | reviewer | Approve or rate a brand sample |
+| `GET` | `/projects/{project_id}/profiles` | writer | List project profile versions |
 | `POST` | `/projects/{project_id}/profiles/train` | admin | Queue profile training |
 | `POST` | `/projects/{project_id}/profiles/{profile_id}/activate` | admin | Activate a profile version |
 | `POST` | `/projects/{project_id}/generation-runs` | writer | Create a run and queue planning |
@@ -131,7 +124,7 @@ PLANNER_MODEL=qwen3.5-2b
 WRITER_MODEL=qwen3.5-2b
 EDITOR_MODEL=qwen3.5-2b
 AUTH_ENABLED=true
-INTERNAL_ACCESS_TOKENS={"replace-admin-token":{"username":"Admin","role":"admin","projects":["*"]}}
+INTERNAL_ACCESS_TOKENS={"replace-admin-token":{"username":"Admin","role":"admin","projects":["acme"]},"replace-writer-token":{"username":"Writer","role":"writer","projects":["acme"]},"replace-review-token":{"username":"Reviewer","role":"reviewer","projects":["acme"]}}
 ENABLE_LEGACY_SYNC_API=false
 ```
 
@@ -215,14 +208,26 @@ This example uses PowerShell and a secure token. Replace placeholders before run
 
 ```powershell
 $api = 'http://127.0.0.1:8000/api/v1'
-$headers = @{ Authorization = 'Bearer replace-admin-token'; 'Content-Type' = 'application/json' }
+$adminHeaders = @{ Authorization = 'Bearer replace-admin-token'; 'Content-Type' = 'application/json' }
+$writerHeaders = @{ Authorization = 'Bearer replace-writer-token'; 'Content-Type' = 'application/json' }
+$reviewerHeaders = @{ Authorization = 'Bearer replace-review-token'; 'Content-Type' = 'application/json' }
+```
+
+Create the `acme` project before using the project-scoped routes:
+
+```powershell
+Invoke-RestMethod -Method Post -Uri "$api/projects" -Headers $adminHeaders -Body (@{
+  project_id = 'acme'
+  name = 'Acme Content'
+  description = 'Internal content operations'
+} | ConvertTo-Json)
 ```
 
 ### Upload Sources Into The Right Cluster
 
 ```powershell
 Invoke-RestMethod -Method Post -Uri "$api/documents/upload" `
-  -Headers @{ Authorization = 'Bearer replace-writer-token' } `
+  -Headers $writerHeaders `
   -Form @{ file = Get-Item 'C:\sources\product-facts.pdf'; project_id = 'acme'; cluster = 'knowledge' }
 ```
 
@@ -232,36 +237,43 @@ Use the same endpoint with `cluster = 'brand_voice'` only for approved, high-rat
 
 ```powershell
 Invoke-RestMethod -Method Post -Uri "$api/projects/acme/profiles/train" `
-  -Headers $headers `
+  -Headers $adminHeaders `
   -Body (@{ name = 'Acme editorial voice' } | ConvertTo-Json)
 ```
 
-Poll the returned `job.job_id`, list profiles, then activate the selected version with `POST /projects/{project_id}/profiles/{profile_id}/activate`.
+Poll the returned `job.job_id`, then list profiles before selecting one to activate:
+
+```powershell
+$profiles = Invoke-RestMethod -Uri "$api/projects/acme/profiles" -Headers $writerHeaders
+$profileId = $profiles[0].profile_id
+Invoke-RestMethod -Method Post -Uri "$api/projects/acme/profiles/$profileId/activate" -Headers $adminHeaders
+```
 
 ### Create, Plan, And Generate A Run
 
 ```powershell
 $run = Invoke-RestMethod -Method Post -Uri "$api/projects/acme/generation-runs" `
-  -Headers @{ Authorization = 'Bearer replace-writer-token'; 'Content-Type' = 'application/json' } `
+  -Headers $writerHeaders `
   -Body (@{
     topic = 'How to evaluate product documentation'
     keywords = @('documentation', 'evaluation')
     audience = 'Product leaders'
+    objective = 'Provide a practical internal evaluation checklist.'
     channel = 'blog'
   } | ConvertTo-Json)
 
-Invoke-RestMethod -Uri "$api/jobs/$($run.job.job_id)" -Headers @{ Authorization = 'Bearer replace-writer-token' }
+Invoke-RestMethod -Uri "$api/jobs/$($run.job.job_id)" -Headers $writerHeaders
 ```
 
 After planning reaches `outline_ready`, edit the outline if needed and queue generation:
 
 ```powershell
 Invoke-RestMethod -Method Patch -Uri "$api/generation-runs/$($run.run_id)/outline" `
-  -Headers @{ Authorization = 'Bearer replace-writer-token'; 'Content-Type' = 'application/json' } `
-  -Body (@{ outline = '# Working outline`n`n## Section one' } | ConvertTo-Json)
+  -Headers $writerHeaders `
+  -Body (@{ outline = @('# Working outline', '## Section one') } | ConvertTo-Json)
 
 Invoke-RestMethod -Method Post -Uri "$api/generation-runs/$($run.run_id)/generate" `
-  -Headers @{ Authorization = 'Bearer replace-writer-token' }
+  -Headers $writerHeaders
 ```
 
 Read the run and its job until generation completes; it exposes content, citations, quality information, profile identity, rewrite count, and state.
@@ -270,11 +282,11 @@ Read the run and its job until generation completes; it exposes content, citatio
 
 ```powershell
 Invoke-RestMethod -Method Post -Uri "$api/generation-runs/$($run.run_id)/review" `
-  -Headers @{ Authorization = 'Bearer replace-review-token'; 'Content-Type' = 'application/json' } `
+  -Headers $reviewerHeaders `
   -Body (@{ approved = $true; human_score = 4; notes = 'Approved for internal publication.' } | ConvertTo-Json)
 
 Invoke-RestMethod -Method Post -Uri "$api/generation-runs/$($run.run_id)/publish" `
-  -Headers @{ Authorization = 'Bearer replace-review-token' }
+  -Headers $reviewerHeaders
 ```
 
 Publication is guarded: a run without reviewer approval receives a conflict response instead of publishing.
@@ -321,12 +333,13 @@ The frontend production build must exist before startup. The script copies stati
 
 ### Backup
 
-Create a runtime backup from `backend/` after stopping write-heavy activity:
+From the repository root, create a runtime backup after stopping write-heavy activity. Pass backend data and configuration paths explicitly because the script resolves its defaults from its working directory:
 
 ```powershell
-cd backend
-.\.venv\Scripts\python.exe scripts\backup_runtime.py backup `
-  --backup-dir ..\backups\contentos-YYYYMMDD
+.\backend\.venv\Scripts\python.exe .\backend\scripts\backup_runtime.py backup `
+  --data-dir .\backend\data `
+  --config-dir .\backend\config `
+  --backup-dir .\backups\contentos-YYYYMMDD
 ```
 
 The backup includes the SQLite database, Chroma data, uploads, generated brand artifacts, configuration, and a manifest. Use a new empty target directory for each backup.
@@ -334,9 +347,10 @@ The backup includes the SQLite database, Chroma data, uploads, generated brand a
 Restore only into a planned maintenance window:
 
 ```powershell
-cd backend
-.\.venv\Scripts\python.exe scripts\backup_runtime.py restore `
-  --backup-dir ..\backups\contentos-YYYYMMDD `
+.\backend\.venv\Scripts\python.exe .\backend\scripts\backup_runtime.py restore `
+  --data-dir .\backend\data `
+  --config-dir .\backend\config `
+  --backup-dir .\backups\contentos-YYYYMMDD `
   --force
 ```
 
