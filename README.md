@@ -46,18 +46,6 @@ The API returns `202 Accepted` for queued planning, generation, and profile-trai
 
 ## Features And Routes
 
-### Product Capabilities
-
-| Capability | What it provides |
-| --- | --- |
-| Project isolation | Project IDs, scoped bearer tokens, and project-filtered repositories and vectors |
-| Source handling | PDF, TXT, MD, and DOCX upload, indexing, listing, search, and deletion |
-| Brand voice governance | Approved sample selection, versioned profiles, explicit activation, and reviewer controls |
-| Async generation | Persisted plan and generation jobs with polling, retry, restart recovery, and idempotency |
-| Quality loop | Deterministic checks, grounding advisory, citations, and at most two targeted rewrites |
-| Publication control | Reviewer approval is required before a generation run can publish |
-| Operations | Liveness and readiness endpoints, structured logs, startup scripts, and runtime backup/restore |
-
 ### Primary API Surface
 
 All application routes are under `/api/v1` and require a bearer token when authentication is enabled.
@@ -94,13 +82,7 @@ Do not build new integrations against either legacy surface. Use the project, pr
 
 ### Prerequisites
 
-- Windows PowerShell 5.1+ or PowerShell 7+
-- Python 3.12-compatible environment
-- Node.js compatible with Next.js 16
-- LM Studio running an OpenAI-compatible local server
-- A loaded model named `qwen3.5-2b`
-
-Run repository commands from the specified directory. There is no root package manifest or root task runner.
+Use PowerShell, Python 3.12-compatible tooling, Node.js for Next.js 16, and LM Studio with `qwen3.5-2b` loaded. There is no root package manifest or task runner.
 
 ### 1. Prepare The Backend
 
@@ -110,8 +92,6 @@ python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
 Copy-Item .env.example .env
 ```
-
-Settings load from `backend/.env`, so backend commands must run from `backend/`.
 
 Configure LM Studio to serve `http://127.0.0.1:1234/v1`, then set the model and secure access values in `backend/.env`:
 
@@ -128,7 +108,7 @@ INTERNAL_ACCESS_TOKENS={"replace-admin-token":{"username":"Admin","role":"admin"
 ENABLE_LEGACY_SYNC_API=false
 ```
 
-`RUN_MODE=cloud` is intentional: LM Studio is accessed through an OpenAI-compatible HTTP API. `OPENAI_API_KEY` must be non-empty for the client, but LM Studio does not require a real cloud key.
+`RUN_MODE=cloud` uses LM Studio through an OpenAI-compatible HTTP API; `OPENAI_API_KEY` must be non-empty.
 
 ### 2. Build The Frontend
 
@@ -138,8 +118,6 @@ npm install
 npm.cmd run build
 ```
 
-The internal startup script requires the production standalone build. It starts the API, worker, and frontend together.
-
 ### 3. Start Securely
 
 From the repository root, use secure startup once `AUTH_ENABLED=true` and `INTERNAL_ACCESS_TOKENS` contains at least one token:
@@ -148,8 +126,6 @@ From the repository root, use secure startup once `AUTH_ENABLED=true` and `INTER
 cd ..
 .\scripts\start_internal.ps1
 ```
-
-Open the frontend at `http://127.0.0.1:3000`, API documentation at `http://127.0.0.1:8000/docs`, and readiness at `http://127.0.0.1:8000/ready`.
 
 ### 4. Start Insecurely For Local Development Only
 
@@ -174,13 +150,9 @@ Do not use this mode on shared networks or for internal production traffic.
 .\scripts\stop_internal.ps1
 ```
 
-The script stops the recorded frontend, worker, and API process IDs and removes the runtime process record.
-
 ## Configuration
 
 `backend/.env.example` is the authoritative template. In secure deployments, set `AUTH_ENABLED=true`, supply a non-placeholder `INTERNAL_ACCESS_TOKENS` JSON registry, leave `ALLOW_INSECURE_AUTH=false` and `ENABLE_LEGACY_SYNC_API=false`, and point `PLANNER_MODEL`, `WRITER_MODEL`, and `EDITOR_MODEL` to `qwen3.5-2b`. `OPENAI_API_BASE`, `CHROMA_PERSIST_DIR`, and `UPLOAD_DIR` default to the LM Studio endpoint and local runtime locations shown above.
-
-The application starts only when authentication has a valid token registry or insecure authentication was explicitly allowed. `start_internal.ps1` applies the same secure-start check.
 
 ## Architecture
 
@@ -231,14 +203,25 @@ Invoke-RestMethod -Method Post -Uri "$api/documents/upload" `
   -Form @{ file = Get-Item 'C:\sources\product-facts.pdf'; project_id = 'acme'; cluster = 'knowledge' }
 ```
 
-Use the same endpoint with `cluster = 'brand_voice'` only for approved, high-rated writing samples. Record sample approval and a human rating through `/projects/{project_id}/documents/{document_id}/approval` before training.
+Use the same endpoint with `cluster = 'brand_voice'` for approved writing samples. Profile training requires at least five project-scoped samples that a reviewer has marked `approved` with a human rating of 4 or 5.
 
 ### Queue And Activate A Profile
 
 ```powershell
+$documentIds = @(
+  'brand-voice-001', 'brand-voice-002', 'brand-voice-003',
+  'brand-voice-004', 'brand-voice-005'
+)
+$approvalRatings = @(5, 5, 4, 4, 4)
+for ($index = 0; $index -lt $documentIds.Count; $index++) {
+  Invoke-RestMethod -Method Post -Uri "$api/projects/acme/documents/$($documentIds[$index])/approval" `
+    -Headers $reviewerHeaders `
+    -Body (@{ status = 'approved'; human_rating = $approvalRatings[$index] } | ConvertTo-Json)
+}
+
 Invoke-RestMethod -Method Post -Uri "$api/projects/acme/profiles/train" `
   -Headers $adminHeaders `
-  -Body (@{ name = 'Acme editorial voice' } | ConvertTo-Json)
+  -Body (@{ name = 'Acme editorial voice'; document_ids = $documentIds; min_documents = 5; max_documents = 5 } | ConvertTo-Json)
 ```
 
 Poll the returned `job.job_id`, then list profiles before selecting one to activate:
@@ -356,21 +339,13 @@ Restore only into a planned maintenance window:
 
 `--force` replaces existing runtime destinations. Verify the chosen backup and target before using it.
 
-### Containers
-
-The repository includes `backend/Dockerfile` and `frontend/Dockerfile` for container builds. Persistent SQLite, Chroma, upload, and configuration directories remain required for operational continuity; containerization does not remove the need for backups or readiness checks.
-
 ## Security
 
 - Keep `AUTH_ENABLED=true` outside isolated local development.
 - Store non-placeholder `INTERNAL_ACCESS_TOKENS` outside source control and rotate them through the team secret process.
-- Assign the least privileged role: writer, reviewer, or admin.
-- Limit each token to the projects it needs; `*` grants access to all projects.
 - Treat `project_id` as a hard data boundary for documents, vectors, profiles, jobs, runs, and blogs.
 - Keep factual material in `knowledge` and approved samples in `brand_voice`; never use either cluster as a substitute for the other.
 - Require reviewer approval before publishing, even after automated checks pass.
-- Use `ALLOW_INSECURE_AUTH=true` and `-AllowInsecureLocal` only together, only on a trusted local machine.
-- Do not expose LM Studio, SQLite files, Chroma persistence, or uploads directly to untrusted networks.
 
 ## Testing
 
