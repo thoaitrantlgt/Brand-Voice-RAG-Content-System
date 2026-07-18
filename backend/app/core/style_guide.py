@@ -68,6 +68,9 @@ class StyleGuide:
             logger.warning("Cannot load brand voice profile at {}: {}", profile_path, e)
             return self
 
+        return self.with_brand_voice_data(profile)
+
+    def with_brand_voice_data(self, profile: dict[str, Any]) -> "StyleGuide":
         dictionary = profile.get("dictionary", {})
         profile_replacements = {
             str(k): str(v)
@@ -77,8 +80,8 @@ class StyleGuide:
 
         return StyleGuide(
             company_name=profile.get("company_name") or self.company_name,
-            allowed_terms=[*self.allowed_terms, *[t for t in profile_terms if t not in self.allowed_terms]],
-            forbidden_replacements={**self.forbidden_replacements, **profile_replacements},
+            allowed_terms=profile_terms or self.allowed_terms,
+            forbidden_replacements=profile_replacements or self.forbidden_replacements,
             style_rules={**self.style_rules, **profile.get("style_rules", {})},
             brand_voice_profile=profile,
         )
@@ -89,7 +92,8 @@ class StyleGuide:
             for forbidden, replacement in self.forbidden_replacements.items()
         ]
         principles = [f"- {item}" for item in self.style_rules.get("writing_principles", [])]
-        allowed = ", ".join(self.allowed_terms) if self.allowed_terms else "No explicit allowed terms configured."
+        prompt_terms = [term for term in self.allowed_terms if len(term) <= 60][:20]
+        allowed = ", ".join(prompt_terms) if prompt_terms else "No explicit allowed terms configured."
 
         return "\n".join(
             [
@@ -114,37 +118,44 @@ class StyleGuide:
         vocabulary = profile.get("vocabulary", {})
         presentation = profile.get("presentation", {})
         syntax = profile.get("syntax", {})
-        examples = profile.get("examples", [])
         rubrics = profile.get("rubrics", [])
         channel_guidelines = profile.get("channel_guidelines", {})
         brand_identity = profile.get("brand_identity", {})
         audience_personas = profile.get("audience_personas", [])
         do_dont = profile.get("do_dont_examples", {})
+        writing_fingerprint = profile.get("writing_fingerprint", {})
+
+        sentence_patterns = writing_fingerprint.get("sentence_patterns", {})
+        perspective = writing_fingerprint.get("perspective_matching", {})
+        fingerprint_terms = writing_fingerprint.get("vocabulary_fingerprints", {})
+        compact_identity = {
+            key: brand_identity.get(key)
+            for key in ("mission", "positioning", "personality_traits", "differentiators")
+            if brand_identity.get(key)
+        }
+        compact_fingerprint = {
+            "average_sentence_words": sentence_patterns.get("average_sentence_words"),
+            "active_voice_ratio": sentence_patterns.get("active_voice_ratio"),
+            "preferred_terms": fingerprint_terms.get("preferred_terms", [])[:12],
+            "forbidden_cliches": fingerprint_terms.get("forbidden_cliches", [])[:10],
+            "perspective": perspective,
+        }
 
         lines = [
             "",
             "Learned Brand Voice Profile (hard constraints):",
-            f"- Brand identity: {json.dumps(brand_identity, ensure_ascii=False)}",
-            f"- Audience personas: {json.dumps(audience_personas, ensure_ascii=False)}",
+            f"- Brand identity: {json.dumps(compact_identity, ensure_ascii=False)}",
+            f"- Primary audience: {json.dumps(audience_personas[:1], ensure_ascii=False)}",
+            f"- Writing fingerprint: {json.dumps(compact_fingerprint, ensure_ascii=False)}",
             f"- Tone profile: {json.dumps(profile.get('tone', {}), ensure_ascii=False)}",
-            f"- Syntax profile: {json.dumps(syntax, ensure_ascii=False)}",
-            f"- Presentation profile: {json.dumps(presentation, ensure_ascii=False)}",
-            f"- Strategic context: {json.dumps(profile.get('strategic_context', {}), ensure_ascii=False)}",
             f"- Channel guidance: {json.dumps(channel_guidelines, ensure_ascii=False)}",
-            f"- Preferred vocabulary: {', '.join(vocabulary.get('preferred_phrases', [])[:30]) or 'None detected'}.",
-            f"- Repeated terminology to prefer: {', '.join(vocabulary.get('repeated_terms', [])[:50]) or 'None detected'}.",
+            f"- Preferred vocabulary: {', '.join(vocabulary.get('preferred_phrases', [])[:15]) or 'None detected'}.",
+            f"- Repeated terminology to prefer: {', '.join(vocabulary.get('repeated_terms', [])[:15]) or 'None detected'}.",
             f"- Do examples: {json.dumps(do_dont.get('do', []), ensure_ascii=False)}",
             f"- Don't examples: {json.dumps(do_dont.get('dont', []), ensure_ascii=False)}",
             "- Brand voice rubrics:",
         ]
-        lines.extend(f"  - {item}" for item in rubrics[:12])
-        if examples:
-            lines.append("- Short reference examples from source blogs:")
-            lines.extend(
-                f"  - {example.get('text', '')}"
-                for example in examples[:6]
-                if example.get("text")
-            )
+        lines.extend(f"  - {item}" for item in rubrics[:6])
         return lines
 
     def enforce(self, text: str) -> tuple[str, dict[str, Any]]:

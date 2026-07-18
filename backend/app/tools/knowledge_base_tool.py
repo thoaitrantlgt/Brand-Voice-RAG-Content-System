@@ -52,6 +52,8 @@ class KnowledgeBaseTool(BaseTool):
 
     # Pydantic field để inject RetrievalEngine
     retrieval_engine: RetrievalEngine
+    project_id: str = "default"
+    cluster: str = "knowledge"
 
     model_config = {"arbitrary_types_allowed": True}
 
@@ -82,6 +84,8 @@ class KnowledgeBaseTool(BaseTool):
                 query=query,
                 top_k=top_k,
                 document_id=document_id,
+                project_id=self.project_id,
+                cluster=self.cluster,
             )
             return context
 

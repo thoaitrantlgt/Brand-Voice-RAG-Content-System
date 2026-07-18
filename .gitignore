@@ -3,3 +3,22 @@ draft.md
 plan.md
 .gittignore
 .agents/
+.worktrees/
+.superpowers/
+
+# Python/runtime
+backend/.venv/
+backend/.pytest_cache/
+backend/**/__pycache__/
+backend/.env
+backend/data/
+backend/config/brand_voice_profile.json
+
+# Frontend runtime
+frontend/node_modules/
+frontend/.next/
+frontend/.env*.local
+
+# Local backups
+backups/
+.runtime/

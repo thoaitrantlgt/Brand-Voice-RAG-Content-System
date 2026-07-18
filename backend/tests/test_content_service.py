@@ -1,4 +1,5 @@
 from app.services.content_service import ContentService
+from app.core.style_guide import StyleGuide
 import pytest
 
 
@@ -28,7 +29,11 @@ class FakeCrew:
 
 
 class FakeContentCrew:
+    def __init__(self):
+        self.last_inputs = None
+
     def run(self, inputs):
+        self.last_inputs = inputs
         return {
             "raw_output": "# Test\n\nĐây là một cách thần kỳ và hack với cam kết tuyệt đối.",
             "status": "success",
@@ -64,3 +69,77 @@ async def test_generate_content_enforces_style_guide():
     assert "hiệu quả" in result["optimized_content"]
     assert result["style_report"]["style_score"] <= 100
     assert len(result["style_report"]["replacements"]) >= 2
+
+
+def test_extract_single_article_prefers_complete_edited_draft():
+    output = """# Draft
+## Intro
+Original.
+
+# Draft
+## Intro
+Edited.
+## Kết luận
+Done.
+
+# Draft
+## Intro
+Truncated.
+"""
+
+    result = ContentService._extract_single_article(output)
+
+    assert result.count("\n# ") == 0
+    assert "Edited." in result
+    assert "Original." not in result
+    assert "Truncated." not in result
+
+
+def test_brand_profile_replaces_generic_corporate_vocabulary(tmp_path):
+    profile_path = tmp_path / "profile.json"
+    profile_path.write_text(
+        '{"company_name":"TSS","dictionary":{"allowed_terms":["thanh nhac"],'
+        '"forbidden_replacements":{"hoc cap toc":"hoc dung nen tang"}}}',
+        encoding="utf-8",
+    )
+    guide = StyleGuide(
+        company_name="Generic",
+        allowed_terms=["gia tri kinh doanh"],
+        forbidden_replacements={"hack": "phuong phap"},
+        style_rules={},
+    ).with_brand_voice_profile(profile_path)
+
+    assert guide.allowed_terms == ["thanh nhac"]
+    assert guide.forbidden_replacements == {"hoc cap toc": "hoc dung nen tang"}
+
+
+@pytest.mark.asyncio
+async def test_generate_content_uses_selected_project_profile():
+    crew = FakeContentCrew()
+    repository = type(
+        "ProfileRepo",
+        (),
+        {
+            "get": lambda self, project_id, profile_id: {
+                "profile_id": profile_id,
+                "profile": {
+                    "company_name": "Alpha",
+                    "dictionary": {"allowed_terms": ["breath support"]},
+                    "style_rules": {"tone": "calm and direct"},
+                },
+            },
+            "get_active": lambda self, project_id: None,
+        },
+    )()
+    service = ContentService(crew=crew, profile_repository=repository)
+
+    await service.generate_content(
+        keywords=["support"],
+        selected_title="A practical guide to support",
+        outline=["## Intro"],
+        project_id="alpha",
+        profile_id="profile-alpha",
+    )
+
+    assert "Alpha" in crew.last_inputs["style_guide_instructions"]
+    assert "breath support" in crew.last_inputs["style_guide_instructions"]

@@ -22,6 +22,7 @@ from app.db.database import get_db
 from app.rag.document_processor import LangChainDocumentProcessor
 from app.rag.vector_store import ChromaVectorStore
 from app.repositories.brand_voice_review_repository import BrandVoiceReviewRepository
+from app.repositories.document_repository import DocumentRepository
 from app.schemas.document import (
     DeleteDocumentResponse,
     ListDocumentsResponse,
@@ -38,6 +39,8 @@ from app.schemas.document import (
 )
 from app.services.brand_voice_service import BrandVoiceService
 from app.services.document_service import DocumentService
+from app.core.auth import Principal
+from app.core.dependencies import authorize, authorize_project, get_current_principal
 
 router = APIRouter(prefix="/documents", tags=["Knowledge Hub (RAG)"])
 
@@ -56,6 +59,7 @@ def _get_document_service() -> DocumentService:
         processor=processor,
         vector_store=vector_store,
         settings=settings,
+        repository=DocumentRepository(),
     )
 
 
@@ -67,6 +71,13 @@ def get_brand_voice_service() -> BrandVoiceService:
     settings = get_settings()
     vector_store = _get_document_service().vector_store
     return BrandVoiceService(vector_store=vector_store, settings=settings)
+
+
+def reject_legacy_brand_voice_api() -> None:
+    raise HTTPException(
+        status_code=status.HTTP_410_GONE,
+        detail="Use the project-scoped asynchronous profile workflow",
+    )
 
 
 def get_brand_voice_review_repo(
@@ -91,11 +102,17 @@ async def upload_document(
         "knowledge",
         description="Document purpose: knowledge, brand_voice, or both.",
     ),
+    project_id: str = Form("default", description="Project data boundary."),
+    profile_id: str | None = Form(None, description="Optional brand voice profile."),
+    cluster: str | None = Form(None, description="knowledge, brand_voice, or evaluation."),
     service: DocumentService = Depends(get_document_service),
     settings: Settings = Depends(get_settings),
+    principal: Principal = Depends(get_current_principal),
 ) -> UploadDocumentResponse:
     """Upload và index tài liệu vào ChromaDB Knowledge Hub."""
     logger.info("POST /documents/upload | filename={}", file.filename)
+    authorize(principal, "writer")
+    authorize_project(principal, project_id)
 
     # Lưu file tạm
     upload_dir = Path(settings.UPLOAD_DIR)
@@ -110,6 +127,9 @@ async def upload_document(
             file_path=temp_path,
             filename=file.filename or "unknown",
             purpose=purpose,
+            project_id=project_id,
+            profile_id=profile_id,
+            cluster=cluster,
         )
         return result
 
@@ -131,10 +151,18 @@ async def upload_document(
     summary="Danh sách tài liệu đã index",
 )
 async def list_documents(
+    project_id: str | None = None,
+    cluster: str | None = None,
     service: DocumentService = Depends(get_document_service),
+    principal: Principal = Depends(get_current_principal),
 ) -> ListDocumentsResponse:
     """Trả về danh sách tất cả tài liệu đã được index vào Knowledge Hub."""
-    return await service.list_documents()
+    authorize(principal, "writer")
+    if project_id:
+        authorize_project(principal, project_id)
+    elif "*" not in principal.projects:
+        raise HTTPException(status_code=403, detail="Project scope is required")
+    return await service.list_documents(project_id=project_id, cluster=cluster)
 
 
 @router.delete(
@@ -145,9 +173,15 @@ async def list_documents(
 async def delete_document(
     document_id: str,
     service: DocumentService = Depends(get_document_service),
+    principal: Principal = Depends(get_current_principal),
 ) -> DeleteDocumentResponse:
     """Xóa tài liệu và tất cả chunks liên quan khỏi ChromaDB."""
     logger.info("DELETE /documents/{}", document_id)
+    authorize(principal, "writer")
+    document = service.get_document_metadata(document_id)
+    if document is None:
+        raise HTTPException(status_code=404, detail="Document not found")
+    authorize_project(principal, document["project_id"])
 
     try:
         return await service.delete_document(document_id)
@@ -172,14 +206,20 @@ async def delete_document(
 async def search_knowledge_base(
     request: SearchKnowledgeBaseRequest,
     service: DocumentService = Depends(get_document_service),
+    principal: Principal = Depends(get_current_principal),
 ) -> SearchKnowledgeBaseResponse:
     """Semantic search trong ChromaDB Knowledge Hub."""
     logger.info("POST /documents/search | query='{}'", request.query[:50])
+    authorize(principal, "writer")
+    authorize_project(principal, request.project_id)
 
     return await service.search(
         query=request.query,
         top_k=request.top_k,
         document_id=request.document_id,
+        project_id=request.project_id,
+        cluster=request.cluster,
+        profile_id=request.profile_id,
     )
 
 
@@ -196,7 +236,10 @@ async def search_knowledge_base(
 async def train_brand_voice(
     request: TrainBrandVoiceRequest,
     service: BrandVoiceService = Depends(get_brand_voice_service),
+    principal: Principal = Depends(get_current_principal),
+    _legacy_disabled: None = Depends(reject_legacy_brand_voice_api),
 ) -> BrandVoiceProfileResponse:
+    authorize(principal, "admin")
     logger.info("POST /documents/brand-voice/train | selected_docs={}", len(request.document_ids))
 
     try:
@@ -220,7 +263,10 @@ async def train_brand_voice(
 )
 async def get_brand_voice_profile(
     service: BrandVoiceService = Depends(get_brand_voice_service),
+    principal: Principal = Depends(get_current_principal),
+    _legacy_disabled: None = Depends(reject_legacy_brand_voice_api),
 ) -> BrandVoiceProfileResponse:
+    authorize(principal, "admin")
     try:
         return await service.get_active_profile()
     except InvalidInputError as e:
@@ -242,7 +288,10 @@ async def get_brand_voice_profile(
 async def evaluate_brand_voice(
     request: BrandVoiceEvaluateRequest,
     service: BrandVoiceService = Depends(get_brand_voice_service),
+    principal: Principal = Depends(get_current_principal),
+    _legacy_disabled: None = Depends(reject_legacy_brand_voice_api),
 ) -> BrandVoiceEvaluateResponse:
+    authorize(principal, "admin")
     try:
         return await service.evaluate(request)
     except InvalidInputError as e:
@@ -266,7 +315,10 @@ async def create_brand_voice_review(
     request: BrandVoiceReviewCreate,
     service: BrandVoiceService = Depends(get_brand_voice_service),
     repo: BrandVoiceReviewRepository = Depends(get_brand_voice_review_repo),
+    principal: Principal = Depends(get_current_principal),
+    _legacy_disabled: None = Depends(reject_legacy_brand_voice_api),
 ) -> BrandVoiceReviewResponse:
+    authorize(principal, "admin")
     try:
         evaluation = await service.evaluate(
             BrandVoiceEvaluateRequest(
@@ -303,6 +355,9 @@ async def list_brand_voice_reviews(
     profile_id: str | None = None,
     limit: int = 50,
     repo: BrandVoiceReviewRepository = Depends(get_brand_voice_review_repo),
+    principal: Principal = Depends(get_current_principal),
+    _legacy_disabled: None = Depends(reject_legacy_brand_voice_api),
 ) -> BrandVoiceReviewListResponse:
+    authorize(principal, "admin")
     reviews = repo.list_all(profile_id=profile_id, limit=limit)
     return BrandVoiceReviewListResponse(reviews=reviews, total_reviews=len(reviews))

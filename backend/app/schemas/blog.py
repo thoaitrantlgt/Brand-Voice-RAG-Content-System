@@ -1,13 +1,18 @@
+from typing import Literal
+
 from pydantic import BaseModel, Field
-from datetime import datetime
+
 
 class BlogCreate(BaseModel):
-    title: str = Field(..., description="Tiêu đề bài viết")
+    title: str = Field(min_length=1)
     seo_title: str | None = None
     meta_description: str | None = None
-    content: str = Field(..., description="Nội dung bài viết (Markdown)")
+    content: str = Field(min_length=1)
     keywords: str | None = None
-    status: str = Field(default="draft", description="draft hoặc published")
+    status: Literal["draft", "published"] = "draft"
+    project_id: str = "default"
+    generation_run_id: str | None = None
+
 
 class BlogUpdate(BaseModel):
     title: str | None = None
@@ -15,7 +20,10 @@ class BlogUpdate(BaseModel):
     meta_description: str | None = None
     content: str | None = None
     keywords: str | None = None
-    status: str | None = None
+    status: Literal["draft", "published"] | None = None
+    project_id: str | None = None
+    generation_run_id: str | None = None
+
 
 class BlogResponse(BaseModel):
     id: int
@@ -25,5 +33,9 @@ class BlogResponse(BaseModel):
     content: str
     keywords: str | None
     status: str
+    project_id: str = "default"
+    generation_run_id: str | None = None
+    approved_by: str | None = None
+    approved_at: str | None = None
     created_at: str
     updated_at: str

@@ -7,7 +7,8 @@ from datetime import datetime
 from pydantic import BaseModel, Field
 
 
-DOCUMENT_PURPOSES = {"knowledge", "brand_voice", "both"}
+DOCUMENT_PURPOSES = {"knowledge", "brand_voice", "evaluation", "both"}
+DOCUMENT_CLUSTERS = {"knowledge", "brand_voice", "evaluation"}
 
 
 # ===== Response Schemas =====
@@ -20,6 +21,13 @@ class DocumentInfo(BaseModel):
     extension: str
     uploaded_at: str
     purpose: str = Field(default="knowledge", description="knowledge, brand_voice, or both")
+    project_id: str = "default"
+    profile_id: str | None = None
+    cluster: str = "knowledge"
+    category: str | None = None
+    human_rating: int | None = None
+    dataset_split: str | None = None
+    approval_status: str = "pending"
 
 
 class UploadDocumentResponse(BaseModel):
@@ -28,6 +36,9 @@ class UploadDocumentResponse(BaseModel):
     filename: str
     total_chunks: int = Field(description="Số chunks đã được index vào ChromaDB.")
     purpose: str = Field(default="knowledge", description="knowledge, brand_voice, or both")
+    project_id: str = "default"
+    profile_id: str | None = None
+    cluster: str = "knowledge"
     message: str = "Tài liệu đã được upload và index thành công."
     status: str = "success"
 
@@ -217,6 +228,9 @@ class SearchKnowledgeBaseRequest(BaseModel):
         default=None,
         description="Lọc kết quả chỉ từ tài liệu cụ thể.",
     )
+    project_id: str = Field(default="default", description="Project data boundary.")
+    cluster: str = Field(default="knowledge", description="knowledge, brand_voice, or evaluation")
+    profile_id: str | None = Field(default=None, description="Optional profile data boundary.")
 
 
 class SearchResultItem(BaseModel):

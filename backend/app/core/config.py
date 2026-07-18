@@ -46,6 +46,10 @@ class Settings(BaseSettings):
     APP_NAME: str = "AI Content OS"
     APP_VERSION: str = "0.1.0"
     DEBUG: bool = False
+    AUTH_ENABLED: bool = False
+    ALLOW_INSECURE_AUTH: bool = False
+    INTERNAL_ACCESS_TOKENS: str = ""
+    ENABLE_LEGACY_SYNC_API: bool = False
 
     # === AI Mode ===
     RUN_MODE: RunMode = RunMode.CLOUD

@@ -18,10 +18,22 @@ from app.schemas.content import (
     ErrorResponse,
 )
 from app.services.content_service import ContentService
+from app.repositories.brand_voice_profile_repository import BrandVoiceProfileRepository
 from app.rag.vector_store import ChromaVectorStore
 from functools import lru_cache
+from app.core.auth import Principal
+from app.core.dependencies import authorize, authorize_project, get_current_principal
 
-router = APIRouter(prefix="/content", tags=["Content Generation"])
+def require_legacy_sync_api(settings: Settings = Depends(get_settings)) -> None:
+    if not settings.ENABLE_LEGACY_SYNC_API:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Legacy sync API is disabled")
+
+
+router = APIRouter(
+    prefix="/content",
+    tags=["Content Generation"],
+    dependencies=[Depends(require_legacy_sync_api)],
+)
 
 
 @lru_cache(maxsize=1)
@@ -29,7 +41,7 @@ def _get_content_service() -> ContentService:
     settings = get_settings()
     vector_store = ChromaVectorStore(settings)
     crew = ContentCrew(settings, vector_store=vector_store)
-    return ContentService(crew=crew)
+    return ContentService(crew=crew, profile_repository=BrandVoiceProfileRepository())
 
 def get_content_service() -> ContentService:
     """
@@ -48,17 +60,21 @@ def get_content_service() -> ContentService:
 async def generate_titles(
     request: GenerateTitlesRequest,
     service: ContentService = Depends(get_content_service),
+    principal: Principal = Depends(get_current_principal),
 ) -> GenerateTitlesResponse:
     """
     **Bước 1 của pipeline**: Planner Agent phân tích từ khóa và tạo plan nháp.
     Người dùng chỉnh tiêu đề/outline trước khi gọi /generate.
     """
     logger.info("POST /content/titles | keywords={}", request.keywords)
+    authorize(principal, "writer")
+    authorize_project(principal, request.project_id)
 
     try:
         result = await service.generate_titles(
             keywords=request.keywords,
             use_web_search=request.use_web_search,
+            project_id=request.project_id,
         )
         return GenerateTitlesResponse(**result)
 
@@ -80,12 +96,15 @@ async def generate_titles(
 async def generate_content(
     request: GenerateContentRequest,
     service: ContentService = Depends(get_content_service),
+    principal: Principal = Depends(get_current_principal),
 ) -> GenerateContentResponse:
     """
     **Bước 2 của pipeline**: Writer viết bài → Editor tối ưu SEO.
     Yêu cầu người dùng đã chọn tiêu đề từ bước /titles.
     """
     logger.info("POST /content/generate | title={}", request.selected_title)
+    authorize(principal, "writer")
+    authorize_project(principal, request.project_id)
 
     try:
         result = await service.generate_content(
@@ -93,6 +112,8 @@ async def generate_content(
             selected_title=request.selected_title,
             outline=request.outline or None,
             use_web_search=request.use_web_search,
+            project_id=request.project_id,
+            profile_id=request.profile_id,
         )
         return GenerateContentResponse(**result)
 
@@ -113,17 +134,22 @@ async def generate_content(
 async def rewrite_content(
     request: RewriteRequest,
     service: ContentService = Depends(get_content_service),
+    principal: Principal = Depends(get_current_principal),
 ) -> RewriteResponse:
     """
     **Bước 3 của pipeline**: Giao tiếp Human-in-the-Loop.
     Chỉnh sửa trực tiếp đoạn văn trên giao diện.
     """
     logger.info("POST /content/rewrite")
+    authorize(principal, "writer")
+    authorize_project(principal, request.project_id)
 
     try:
         result = await service.rewrite_content(
             original_text=request.original_text,
             feedback=request.feedback,
+            project_id=request.project_id,
+            profile_id=request.profile_id,
         )
         return RewriteResponse(**result)
 

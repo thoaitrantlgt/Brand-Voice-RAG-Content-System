@@ -20,7 +20,9 @@ class EditorTask(ITask):
             description=(
                 "Review the blog post drafted by the Writer Agent.\n\n"
                 "Keywords: **{keywords}**\n\n"
+                "User brief constraints:\n{brief_context}\n\n"
                 "Corporate Style Guide:\n{style_guide_instructions}\n\n"
+                "Retrieved project knowledge:\n{knowledge_context}\n\n"
                 "Your tasks:\n"
                 "1. Refine the content for clarity, engagement, and accuracy.\n"
                 "2. Ensure the tone is consistent, professional, formal, and direct.\n"
@@ -28,9 +30,11 @@ class EditorTask(ITask):
                 "4. Optimize headings (H1, H2, H3) and structure for readability.\n"
                 "5. Fix grammatical or spelling errors.\n"
                 "6. Maintain the original Markdown format.\n\n"
+                "7. Remove technical claims that are not supported by the retrieved project knowledge.\n\n"
                 "OUTPUT FORMAT:\n"
-                "Return the complete, refined blog post in Markdown format. Start with the # H1 heading. "
-                "Do NOT return JSON."
+                "Return exactly ONE complete refined blog post. Start with exactly ONE # H1 heading. "
+                "Do not include the original draft, alternatives, commentary, separators, or a second H1. "
+                "Do NOT return JSON or wrap the article in a code fence."
             ),
             expected_output=(
                 "The fully refined and edited blog post in Markdown format."

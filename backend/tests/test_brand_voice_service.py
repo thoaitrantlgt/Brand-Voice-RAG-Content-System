@@ -22,7 +22,7 @@ async def test_train_brand_voice_creates_profile_dataset_and_indexes(tmp_path):
     store.get_documents.return_value = [
         {
             "id": "doc-1-0",
-            "text": "# Title One\n\nMo dau ro rang.\n\nNoi dung chinh ve AI va tu dong hoa.",
+            "text": "# Title One\n\nMo dau ro rang.\n\nRat don gian. Thuc ra thi AI can ro muc tieu - khong phai them cong cu. Ban thay van de nam o dau?",
             "metadata": {
                 "document_id": "doc-1",
                 "filename": "one.md",
@@ -32,7 +32,7 @@ async def test_train_brand_voice_creates_profile_dataset_and_indexes(tmp_path):
         },
         {
             "id": "doc-2-0",
-            "text": "# Title Two\n\nBai viet than thien va thuc te ve marketing.",
+            "text": "# Title Two\n\nBai viet than thien va thuc te ve marketing. Khong han. Nhung thuc te la doi marketing can noi thang vao pipeline impact.",
             "metadata": {
                 "document_id": "doc-2",
                 "filename": "two.md",
@@ -75,6 +75,7 @@ async def test_train_brand_voice_creates_profile_dataset_and_indexes(tmp_path):
     assert "Brand Voice Profile" in result.profile_markdown
     assert "Brand Identity" in result.profile_markdown
     assert "Audience Personas" in result.profile_markdown
+    assert "Writing Fingerprint" in result.profile_markdown
     assert "Calibration Tests" in result.profile_markdown
     assert "Governance" in result.profile_markdown
     assert (tmp_path / "brand_voice_profile.json").exists()
@@ -94,6 +95,10 @@ async def test_train_brand_voice_creates_profile_dataset_and_indexes(tmp_path):
     assert len(profile["calibration_tests"]) == 10
     assert profile["brand_identity"]["mission"] == "Make AI content practical for business teams."
     assert profile["audience_personas"][0]["name"] == "Marketing lead"
+    assert "writing_fingerprint" in profile
+    assert "sentence_patterns" in profile["writing_fingerprint"]
+    assert "vocabulary_fingerprints" in profile["writing_fingerprint"]
+    assert "perspective_matching" in profile["writing_fingerprint"]
 
 
 @pytest.mark.asyncio
@@ -111,6 +116,27 @@ async def test_evaluate_brand_voice_returns_scores(tmp_path):
                 },
                 "dictionary": {"forbidden_replacements": {"hack": "workflow"}},
                 "style_rules": {"max_sentence_words": 18},
+                "writing_fingerprint": {
+                    "sentence_patterns": {
+                        "average_sentence_words": 8,
+                        "short_fragment_ratio": 0.1,
+                        "rhetorical_question_ratio": 0,
+                        "dash_usage_per_1000_words": 0,
+                        "parenthetical_aside_ratio": 0,
+                        "active_voice_ratio": 0.9,
+                    },
+                    "vocabulary_fingerprints": {
+                        "preferred_terms": ["AI", "marketing"],
+                        "transition_phrases": [],
+                        "forbidden_cliches": ["game-changing"],
+                    },
+                    "perspective_matching": {
+                        "self_reference": "unspecified",
+                        "reader_address": "reader",
+                        "stance": "mentor",
+                        "argument_style": "explain_then_recommend",
+                    },
+                },
                 "channel_guidelines": {
                     "blog": {"rules": ["Use clear H2 sections.", "Avoid unsupported hype."]}
                 },
@@ -135,6 +161,7 @@ async def test_evaluate_brand_voice_returns_scores(tmp_path):
     assert result.overall_score > 70
     assert "identity_alignment" in result.dimension_scores
     assert "persona_fit" in result.dimension_scores
+    assert "writing_fingerprint_fit" in result.dimension_scores
     assert result.evaluation_method == "heuristic"
     assert result.reviewer_checklist == ["Check tone.", "Check facts."]
 
