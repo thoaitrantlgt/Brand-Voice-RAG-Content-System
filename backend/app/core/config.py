@@ -114,6 +114,10 @@ class Settings(BaseSettings):
     BRAND_VOICE_PROFILE_PATH: str = "./config/brand_voice_profile.json"
     BRAND_VOICE_DATASET_DIR: str = "./data/brand_voice"
 
+    # === Demo Workspace Bootstrap ===
+    DEMO_SEED_ENABLED: bool = True
+    DEMO_SEED_DIR: str = "./seed/tss"
+
     # === Server ===
     HOST: str = "0.0.0.0"
     PORT: int = 8000

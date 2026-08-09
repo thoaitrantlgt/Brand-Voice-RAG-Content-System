@@ -25,6 +25,8 @@ AI Content OS là hệ thống viết blog theo project, dùng ba nguồn tín h
 2. **Knowledge documents** cung cấp dữ kiện để bài không tự bịa.
 3. **Brand voice samples** cung cấp cách viết, giọng điệu và writing fingerprint.
 
+Trên database sạch, bootstrap mặc định nạp project `default`, 10 writing samples TSS đã approved và active profile `TSS Demo`. Vì vậy luồng demo bắt đầu trực tiếp từ bước nhập brief; có thể tắt bằng `DEMO_SEED_ENABLED=false`.
+
 Luồng chính là:
 
 ```text
@@ -103,6 +105,7 @@ Mỗi generation run lưu:
 ```mermaid
 flowchart TB
     USER[Writer / Reviewer / Admin]
+    CF[Cloudflare Tunnel]
     UI[Next.js Operations UI]
     API[FastAPI API]
     AUTH[Bearer Auth + RBAC + Project Scope]
@@ -116,7 +119,9 @@ flowchart TB
     ARTIFACTS[(Generation / Evaluation Artifacts)]
     EVAL[DeepEval + Ragas Offline Runner]
 
-    USER --> UI
+    USER --> CF
+    CF --> UI
+    CF --> API
     UI --> API
     API --> AUTH
     AUTH --> DB
@@ -142,6 +147,7 @@ flowchart TB
 | RAG | `backend/app/rag/`, `tools/knowledge_base_tool.py` | Chunk, embed, filter, retrieve |
 | Persistence | `backend/app/repositories/`, `db/database.py` | SQLite state transitions và audit records |
 | Background processing | `backend/worker.py`, `app/workers/` | Claim job, execute, retry, recover |
+| Bootstrap data | `backend/app/bootstrap/`, `backend/seed/tss/` | Seed idempotent samples và active demo profile |
 | Runtime UI | `frontend/app/` | Brief, source management, review, publish |
 | Offline evaluation | `backend/app/evaluation/`, `backend/scripts/` | DeepEval, Ragas, benchmark artifacts |
 

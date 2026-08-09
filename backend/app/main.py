@@ -18,6 +18,7 @@ from app.db.database import init_db
 from app.core.dependencies import get_current_principal
 from app.services.readiness_service import ReadinessService
 from app.core.auth import parse_token_registry
+from app.bootstrap.demo_seed import DemoWorkspaceSeeder
 
 settings = get_settings()
 
@@ -31,6 +32,9 @@ async def lifespan(app: FastAPI):
     if settings.AUTH_ENABLED and not parse_token_registry(settings.INTERNAL_ACCESS_TOKENS):
         raise RuntimeError("AUTH_ENABLED requires at least one internal access token")
     init_db()  # Khởi tạo SQLite database (tạo bảng nếu chưa có)
+    if settings.DEMO_SEED_ENABLED:
+        seed_result = DemoWorkspaceSeeder(settings).run()
+        app.state.demo_seed = seed_result
     yield
     # Cleanup nếu cần (close connections, v.v.)
 

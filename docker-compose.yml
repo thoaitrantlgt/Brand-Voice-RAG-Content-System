@@ -69,6 +69,9 @@ services:
       FINAL_JUDGE_MODEL: ${VLLM_MODEL_NAME:-qwen3.5-2b}
       FINAL_JUDGE_API_BASE: http://vllm:8000/v1
       FINAL_JUDGE_API_KEY: ${VLLM_API_KEY:-replace-vllm-token}
+      ALLOWED_ORIGINS: '${ALLOWED_ORIGINS:-["http://localhost:3000"]}'
+      DEMO_SEED_ENABLED: ${DEMO_SEED_ENABLED:-true}
+      DEMO_SEED_DIR: /app/seed/tss
       CHROMA_PERSIST_DIR: /app/data/chroma
       UPLOAD_DIR: /app/data/uploads
       BRAND_VOICE_DATASET_DIR: /app/data/brand_voice
@@ -76,14 +79,14 @@ services:
       - ./backend/data:/app/data
       - ./backend/config:/app/config
     ports:
-      - "8000:8000"
+      - "${API_BIND_ADDRESS:-127.0.0.1}:8000:8000"
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/ready', timeout=3)"]
       interval: 15s
       timeout: 5s
       retries: 5
-      start_period: 45s
+      start_period: 5m
     depends_on:
       vllm:
         condition: service_healthy
@@ -107,6 +110,8 @@ services:
       FINAL_JUDGE_MODEL: ${VLLM_MODEL_NAME:-qwen3.5-2b}
       FINAL_JUDGE_API_BASE: http://vllm:8000/v1
       FINAL_JUDGE_API_KEY: ${VLLM_API_KEY:-replace-vllm-token}
+      DEMO_SEED_ENABLED: ${DEMO_SEED_ENABLED:-true}
+      DEMO_SEED_DIR: /app/seed/tss
       CHROMA_PERSIST_DIR: /app/data/chroma
       UPLOAD_DIR: /app/data/uploads
       BRAND_VOICE_DATASET_DIR: /app/data/brand_voice
@@ -126,9 +131,37 @@ services:
       args:
         NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://127.0.0.1:8000/api/v1}
     ports:
-      - "3000:3000"
+      - "${FRONTEND_BIND_ADDRESS:-127.0.0.1}:3000:3000"
     depends_on:
       api:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - >-
+          fetch('http://127.0.0.1:3000').then(r => {
+          if (!r.ok) process.exit(1) }).catch(() => process.exit(1))
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  cloudflared:
+    image: ${CLOUDFLARED_IMAGE:-cloudflare/cloudflared:2026.7.2}
+    profiles: [cloudflare]
+    command:
+      - tunnel
+      - --no-autoupdate
+      - run
+      - --token
+      - ${CLOUDFLARE_TUNNEL_TOKEN:-replace-cloudflare-tunnel-token}
+    depends_on:
+      api:
+        condition: service_healthy
+      frontend:
         condition: service_healthy
     restart: unless-stopped
 

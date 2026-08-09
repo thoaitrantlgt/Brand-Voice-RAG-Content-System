@@ -56,7 +56,7 @@ Requirements:
 
 - Linux server with an NVIDIA GPU and at least 8 GB VRAM for the default 2B model
 - Current NVIDIA driver, Docker Engine, Docker Compose v2, and NVIDIA Container Toolkit
-- Ports `3000` and `8000` reachable through your firewall or reverse proxy
+- A Cloudflare-managed domain and remotely-managed Tunnel for public access
 
 Prepare configuration from the repository root:
 
@@ -68,7 +68,9 @@ cp backend/.env.example backend/.env
 Edit root `.env`:
 
 - Replace `VLLM_API_KEY` with a long random internal token.
-- Set `NEXT_PUBLIC_API_BASE_URL` to the backend URL reachable by customer browsers. This value is embedded during the frontend build.
+- Set `NEXT_PUBLIC_API_BASE_URL=https://api.example.com/api/v1`.
+- Set `ALLOWED_ORIGINS=["https://app.example.com"]`.
+- Paste the remotely-managed tunnel token into `CLOUDFLARE_TUNNEL_TOKEN`.
 - Override `VLLM_MODEL`, `VLLM_MAX_MODEL_LEN`, or `VLLM_GPU_MEMORY_UTILIZATION` when required by the GPU.
 
 Edit `backend/.env`:
@@ -77,20 +79,35 @@ Edit `backend/.env`:
 - Keep `AUTH_ENABLED=true` and `ALLOW_INSECURE_AUTH=false`.
 - Set `ALLOWED_ORIGINS` to the public frontend origins.
 
-Start the complete stack:
+In the [Cloudflare Tunnel dashboard](https://developers.cloudflare.com/tunnel/setup/), add two published application routes to the same tunnel:
+
+| Public hostname | Service URL |
+| --- | --- |
+| `app.example.com` | `http://frontend:3000` |
+| `api.example.com` | `http://api:8000` |
+
+The service names above resolve inside the Compose network. Do not add a public route for `vllm`.
+
+Start the complete stack with the Cloudflare profile:
 
 ```bash
-docker compose up -d --build
+docker compose --profile cloudflare up -d --build
 docker compose ps
 docker compose logs -f vllm
+docker compose logs -f cloudflared
 ```
 
-The first startup downloads approximately 4.6 GB of Qwen model weights and compiles vLLM kernels. Model and compile caches are persisted in named Docker volumes. Verify the deployment after vLLM becomes healthy:
+Cloudflare Tunnel creates outbound connections, so ports `3000` and `8000` remain bound to `127.0.0.1` on the host. The first startup downloads approximately 4.6 GB of Qwen model weights, compiles vLLM kernels, and indexes the bundled writing samples. Model and compile caches are persisted in named Docker volumes. Verify the deployment after the services become healthy:
 
 ```bash
 curl http://127.0.0.1:8000/ready
 curl http://127.0.0.1:3000
+curl https://api.example.com/health
 ```
+
+Open `https://app.example.com`, configure one of the writer tokens from `backend/.env`, and create a blog. A clean database is automatically initialized with the `The Sun Symphony Demo` project, ten approved writing samples, and an active `TSS Demo` brand profile. Seeding is idempotent and does not replace an existing active profile. Set `DEMO_SEED_ENABLED=false` for a blank installation.
+
+External API clients use `https://api.example.com/api/v1` with `Authorization: Bearer <token>`. Interactive OpenAPI documentation is available at `https://api.example.com/docs`.
 
 The default inference configuration is:
 
@@ -136,7 +153,9 @@ Open `http://127.0.0.1:3000` and check `http://127.0.0.1:8000/ready`.
 
 ```mermaid
 flowchart TB
-    UI[Next.js UI] --> API[FastAPI]
+    USERS[Browser and API clients] --> CF[Cloudflare Tunnel]
+    CF --> UI[Next.js UI]
+    CF --> API[FastAPI]
     API --> AUTH[Role and project authorization]
     API --> DB[(SQLite jobs and metadata)]
     API --> VECTOR[(Chroma vectors)]
@@ -153,6 +172,7 @@ flowchart TB
 backend/app/api/v1/       HTTP routers
 backend/app/repositories/ SQLite persistence and state transitions
 backend/app/workers/      Planning, generation, and profile jobs
+backend/seed/tss/         Bundled writing samples and initial active profile
 backend/app/rag/          Loading, embeddings, retrieval, and Chroma
 backend/worker.py         Persistent job consumer
 frontend/app/             Next.js routes and shared workspace UI
@@ -206,7 +226,7 @@ New integrations must use project-scoped jobs and generation runs.
 
 | Check | Result |
 | --- | --- |
-| Backend suite | 82 tests passed, 1 model-backed eval skipped by default |
+| Backend suite | 85 tests passed, 1 model-backed eval skipped by default |
 | Frontend | ESLint and production build passed |
 | vLLM deployment | Provider, authenticated readiness, and Compose structure tested; GPU smoke test runs on the deployment server |
 | TSS smoke | Brand 87, style 92, fingerprint 45, persona 55 |
@@ -246,16 +266,19 @@ Restore during a maintenance window with the same script's `restore` action. `--
 On the Linux/NVIDIA deployment host:
 
 ```bash
-docker compose up -d --build
+docker compose --profile cloudflare up -d --build
 docker compose ps
 docker compose down
 ```
 
-`docker-compose.yml` starts vLLM, API, worker, and frontend. It forces secure auth settings for the API and worker; configure real tokens in `backend/.env` and root `.env` before startup.
+`docker-compose.yml` starts vLLM, API, worker, and frontend. The `cloudflare` profile adds the tunnel connector. It forces secure auth settings for the API and worker; configure real tokens in `backend/.env` and root `.env` before startup.
 
 ## Security And Release Checklist
 
 - [ ] Authentication enabled with unique, project-scoped tokens
+- [ ] Cloudflare routes expose only `frontend:3000` and `api:8000`, never `vllm`
+- [ ] `ALLOWED_ORIGINS` contains the exact public frontend origin
+- [ ] Root `.env` contains a real tunnel token and remains untracked
 - [ ] Legacy synchronous APIs disabled
 - [ ] Knowledge and brand samples stored in the correct clusters
 - [ ] Brand samples explicitly approved and rated before training

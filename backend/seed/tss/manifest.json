@@ -1,0 +1,96 @@
+{
+  "seed_id": "tss-writing-demo",
+  "version": 1,
+  "project": {
+    "project_id": "default",
+    "name": "The Sun Symphony Demo",
+    "description": "Ready-to-write workspace seeded with ten approved TSS writing samples."
+  },
+  "profile": {
+    "name": "TSS Demo",
+    "profile_key": "tss-demo-v1",
+    "file": "profile.json"
+  },
+  "samples": [
+    {
+      "document_id": "b6ef2175-da20-40b4-9925-0ad558520dbb",
+      "filename": "04-ky-thuat-am-thanh-the-sun-symphony.md",
+      "source_url": "https://thanhnhacdinhcao.vn/ky-thuat-am-thanh-the-sun-symphony-2/",
+      "category": "Kỹ thuật",
+      "rating": 4,
+      "dataset_split": "train"
+    },
+    {
+      "document_id": "8fbd4b5d-5874-4f61-91ce-8a8f3f96155d",
+      "filename": "08-phan-biet-giua-2-ky-thuat-staccato-va-legato-trong-thanh-nhac.md",
+      "source_url": "https://thanhnhacdinhcao.vn/phan-biet-giua-2-ky-thuat-staccato-va-legato-trong-thanh-nhac/",
+      "category": "Kỹ thuật",
+      "rating": 5,
+      "dataset_split": "train"
+    },
+    {
+      "document_id": "0c122cc0-578d-4946-a393-dc9b164a17da",
+      "filename": "09-gioi-thieu-ve-ky-thuat-vibrato-trong-thanh-nhac.md",
+      "source_url": "https://thanhnhacdinhcao.vn/gioi-thieu-ve-ky-thuat-vibrato-trong-thanh-nhac/",
+      "category": "Kỹ thuật",
+      "rating": 4,
+      "dataset_split": "train"
+    },
+    {
+      "document_id": "ac406330-4f0a-4af1-a5d8-2585b77f8f97",
+      "filename": "12-hat-nhac-mot-noi-giong-mot-noi.md",
+      "source_url": "https://thanhnhacdinhcao.vn/hat-nhac-mot-noi/",
+      "category": "Nỗi đau",
+      "rating": 4,
+      "dataset_split": "train"
+    },
+    {
+      "document_id": "9f46501f-0e0c-468a-820d-67845e517017",
+      "filename": "20-mo-mieng-roi-ma-tieng-van-bi-bi-phat-am-khong-ro-chu.md",
+      "source_url": "https://thanhnhacdinhcao.vn/mo-mieng-roi-ma-tieng-van-bi-bi/",
+      "category": "Nỗi đau",
+      "rating": 4,
+      "dataset_split": "train"
+    },
+    {
+      "document_id": "d1c6dc51-8113-4acf-84b3-1438a9b2ff9b",
+      "filename": "29-lop-hoc-thanh-nhac-giup-doanh-nhan-tu-tin-giao-tiep-va-thuyet-phuc.md",
+      "source_url": "https://thanhnhacdinhcao.vn/lop-hoc-thanh-nhac-giup-doanh-nhan-tu-tin-giao-tiep-va-thuyet-phuc/",
+      "category": "Lợi ích",
+      "rating": 4,
+      "dataset_split": "train"
+    },
+    {
+      "document_id": "ffa0da33-e399-4e22-8177-2452f2919cd6",
+      "filename": "30-lop-hoc-thanh-nhac-ren-luyen-ban-linh-san-khau.md",
+      "source_url": "https://thanhnhacdinhcao.vn/lop-hoc-thanh-nhac-ren-luyen-ban-linh-san-khau/",
+      "category": "Lợi ích",
+      "rating": 5,
+      "dataset_split": "train"
+    },
+    {
+      "document_id": "8415a286-ea03-423f-8a86-c9a3c8582c96",
+      "filename": "37-lop-hoc-thanh-nhac-theo-lo-trinh-ca-nhan.md",
+      "source_url": "https://thanhnhacdinhcao.vn/lop-hoc-thanh-nhac-theo-lo-trinh-ca-nhan/",
+      "category": "Giải pháp",
+      "rating": 4,
+      "dataset_split": "train"
+    },
+    {
+      "document_id": "7fbd1640-2d47-4d45-835b-7e5fd8cc3e6a",
+      "filename": "44-lam-chu-ky-thuat-luyen-lay.md",
+      "source_url": "https://thanhnhacdinhcao.vn/lam-chu-ky-thuat-luyen-lay/",
+      "category": "Luyện tập",
+      "rating": 4,
+      "dataset_split": "train"
+    },
+    {
+      "document_id": "9784b74f-fc4a-48b1-8cd0-44c6aaddbf4a",
+      "filename": "49-huong-dan-hoc-hat-hieu-qua-va-ghi-nho-sau.md",
+      "source_url": "https://thanhnhacdinhcao.vn/huong-dan-hoc-hat-hieu-qua-va-ghi-nho-sau/",
+      "category": "Luyện tập",
+      "rating": 4,
+      "dataset_split": "train"
+    }
+  ]
+}
