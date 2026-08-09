@@ -27,6 +27,8 @@ class EditorTask(ITask):
                 "1. Refine the content for clarity, engagement, and accuracy.\n"
                 "2. Ensure the tone is consistent, professional, formal, and direct.\n"
                 "3. Apply the corporate terminology rules and avoid forbidden terms.\n"
+                "   Before returning, scan the entire article for every forbidden term listed in the style guide. "
+                "Replace terms with their required replacements; if no replacement is provided, rewrite the sentence naturally.\n"
                 "4. Optimize headings (H1, H2, H3) and structure for readability.\n"
                 "5. Fix grammatical or spelling errors.\n"
                 "6. Maintain the original Markdown format.\n\n"
@@ -34,7 +36,7 @@ class EditorTask(ITask):
                 "OUTPUT FORMAT:\n"
                 "Return exactly ONE complete refined blog post. Start with exactly ONE # H1 heading. "
                 "Do not include the original draft, alternatives, commentary, separators, or a second H1. "
-                "Do NOT return JSON or wrap the article in a code fence."
+                "Do NOT return JSON or wrap the article in a code fence. The final article must contain zero forbidden terms."
             ),
             expected_output=(
                 "The fully refined and edited blog post in Markdown format."

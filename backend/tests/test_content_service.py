@@ -113,6 +113,28 @@ def test_brand_profile_replaces_generic_corporate_vocabulary(tmp_path):
     assert guide.forbidden_replacements == {"hoc cap toc": "hoc dung nen tang"}
 
 
+def test_brand_profile_enforces_forbidden_terms_without_replacements():
+    guide = StyleGuide(
+        company_name="Generic",
+        allowed_terms=[],
+        forbidden_replacements={},
+        style_rules={},
+    ).with_brand_voice_data(
+        {
+            "company_name": "TSS",
+            "vocabulary": {"forbidden_terms": ["Thư giãn"]},
+        }
+    )
+
+    prompt = guide.to_prompt()
+    content, report = guide.enforce("# Bài viết\n\nHãy thư giãn trước khi hát.")
+
+    assert "Do not use 'Thư giãn'" in prompt
+    assert content.endswith("Hãy thư giãn trước khi hát.")
+    assert report["remaining_forbidden_terms"] == ["Thư giãn"]
+    assert report["style_score"] == 75
+
+
 @pytest.mark.asyncio
 async def test_generate_content_uses_selected_project_profile():
     crew = FakeContentCrew()

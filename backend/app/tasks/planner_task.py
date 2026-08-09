@@ -19,7 +19,6 @@ class PlannerTask(ITask):
 
         return Task(
             description=(
-                "/nothink\n"
                 "Tao 1 ban draft blog cho cac tu khoa chinh: {keywords}\n\n"
                 "Truoc khi lap draft, hay tim thong tin lien quan trong tai lieu nguoi dung upload neu co tool Knowledge Base. "
                 "Neu co tool Web Search, hay dung web de cap nhat thong tin hien tai. "

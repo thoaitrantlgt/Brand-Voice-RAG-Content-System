@@ -30,7 +30,6 @@ class EditorAgent(IAgent):
             role="Content Editor",
             goal="Refines the content for clarity, engagement, and accuracy.",
             backstory=(
-                "/nothink\n"
                 "You're a meticulous editor with an eye for detail. You excel at "
                 "polishing drafts, improving flow, and ensuring the content aligns "
                 "with the brand's voice and quality standards."

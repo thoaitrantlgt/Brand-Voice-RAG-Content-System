@@ -6,6 +6,7 @@ import pytest
 from app.core.config import Settings
 from app.core.interfaces import DocumentChunk, ProcessedDocument
 from app.db.database import init_db
+from app.rag.document_processor import LangChainDocumentProcessor
 from app.repositories.document_repository import DocumentRepository
 from app.services.document_service import DocumentService
 from scripts.evaluate_tss_pipeline import SheetRecord, clean_extracted_article, stratified_split
@@ -41,6 +42,23 @@ def test_clean_extracted_article_removes_navigation_and_demo_suffix():
 
     assert title == "Cach lay hoi"
     assert article == "Cach lay hoi\nNoi dung chinh"
+
+
+def test_markdown_processor_reads_utf8_without_optional_markdown_parser(tmp_path: Path):
+    path = tmp_path / "writing-sample.md"
+    path.write_text(
+        "# Kỹ thuật lấy hơi\n\nNội dung writing sample tiếng Việt.",
+        encoding="utf-8",
+    )
+    processor = LangChainDocumentProcessor(
+        Settings(GOOGLE_API_KEY="test", CHUNK_SIZE=1000, CHUNK_OVERLAP=100)
+    )
+
+    result = processor.process(path, "sample-1")
+
+    assert result.total_chunks == 1
+    assert "# Kỹ thuật lấy hơi" in result.chunks[0].text
+    assert "Nội dung writing sample tiếng Việt." in result.chunks[0].text
 
 
 @pytest.mark.asyncio

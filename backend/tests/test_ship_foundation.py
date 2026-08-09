@@ -32,11 +32,16 @@ def test_init_db_migrates_existing_blog_rows_without_data_loss(tmp_path):
         columns = {row["name"] for row in conn.execute("PRAGMA table_info(blogs)")}
         row = conn.execute("SELECT title, project_id, status FROM blogs").fetchone()
         versions = conn.execute("SELECT version FROM schema_migrations ORDER BY version").fetchall()
+        retrieval_table = conn.execute(
+            "SELECT name FROM sqlite_master "
+            "WHERE type = 'table' AND name = 'generation_retrieval_contexts'"
+        ).fetchone()
         journal_mode = conn.execute("PRAGMA journal_mode").fetchone()[0]
 
     assert {"project_id", "generation_run_id", "approved_by", "approved_at"} <= columns
     assert dict(row) == {"title": "Kept", "project_id": "default", "status": "draft"}
-    assert [item[0] for item in versions] == [1, 2, 3, 4, 5]
+    assert [item[0] for item in versions] == [1, 2, 3, 4, 5, 6]
+    assert retrieval_table["name"] == "generation_retrieval_contexts"
     assert journal_mode.lower() == "wal"
 
 

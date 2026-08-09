@@ -2,11 +2,10 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
 import { AlertCircle, ArrowLeft, CheckCircle2, FileCheck2, Loader2, PenLine, Search, Wand2 } from "lucide-react";
 import { api, Job, waitForJob } from "../lib/api";
 import { useProject } from "../components/ProjectContext";
+import { FinalEvaluation, FinalEvaluationPanel, HighlightedBlog } from "../components/FinalEvaluation";
 
 type Run = {
   run_id: string;
@@ -17,8 +16,8 @@ type Run = {
   quality_report: {
     passed?: boolean;
     dimension_scores?: Record<string, number>;
-    grounding_coverage?: number;
     violations?: { code: string; actual?: number; threshold?: number }[];
+    final_evaluation?: FinalEvaluation;
   };
   citations: { document_id: string; source_url?: string | null; excerpt: string; relevance_score?: number }[];
   rewrite_count: number;
@@ -144,16 +143,19 @@ export default function CreatePage() {
 
       {stage === "result" && run && (
         <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
-          <article className="rounded-md border border-slate-200 bg-white p-7 prose prose-slate max-w-none"><ReactMarkdown remarkPlugins={[remarkGfm]}>{run.final_content ?? ""}</ReactMarkdown></article>
+          <article className="rounded-md border border-slate-200 bg-white p-7 prose prose-slate max-w-none"><HighlightedBlog content={run.final_content ?? ""} evaluation={run.quality_report.final_evaluation} /></article>
           <aside className="space-y-5">
             <section className="rounded-md border border-slate-200 bg-white p-4">
               <div className="mb-3 flex items-center gap-2"><CheckCircle2 size={18} className={run.quality_report.passed ? "text-emerald-600" : "text-amber-600"} /><h3 className="font-semibold">Quality report</h3></div>
               <div className="space-y-2 text-sm">
                 {Object.entries(run.quality_report.dimension_scores ?? {}).map(([key, value]) => <Metric key={key} label={key} value={value} />)}
-                <Metric label="grounding" value={Math.round((run.quality_report.grounding_coverage ?? 0) * 100)} />
               </div>
               <p className="mt-3 text-xs text-slate-500">Rewrite: {run.rewrite_count}/2</p>
-              {(run.quality_report.violations ?? []).map((item) => <div key={item.code} className="mt-2 rounded bg-amber-50 px-2 py-1 text-xs text-amber-800">{item.code}</div>)}
+              {(run.quality_report.violations ?? []).filter((item) => item.code !== "grounding_below_threshold").map((item) => <div key={item.code} className="mt-2 rounded bg-amber-50 px-2 py-1 text-xs text-amber-800">{item.code}</div>)}
+            </section>
+            <section className="rounded-md border border-slate-200 bg-white p-4">
+              <h3 className="mb-3 font-semibold">Lý do chấm điểm</h3>
+              <FinalEvaluationPanel evaluation={run.quality_report.final_evaluation} />
             </section>
             <section className="rounded-md border border-slate-200 bg-white p-4">
               <h3 className="mb-3 font-semibold">Nguồn đã dùng</h3>

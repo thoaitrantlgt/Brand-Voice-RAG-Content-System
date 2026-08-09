@@ -15,6 +15,7 @@ class AIProvider(str, Enum):
     GOOGLE = "google"
     ANTHROPIC = "anthropic"
     OLLAMA = "ollama"
+    VLLM = "vllm"
     HUGGINGFACE = "huggingface"  # Phase 2: Local HuggingFace models
 
 
@@ -52,8 +53,8 @@ class Settings(BaseSettings):
     ENABLE_LEGACY_SYNC_API: bool = False
 
     # === AI Mode ===
-    RUN_MODE: RunMode = RunMode.CLOUD
-    AI_PROVIDER: AIProvider = AIProvider.GOOGLE
+    RUN_MODE: RunMode = RunMode.LOCAL
+    AI_PROVIDER: AIProvider = AIProvider.VLLM
 
     # === API Keys (Cloud) ===
     GOOGLE_API_KEY: str = ""
@@ -62,11 +63,21 @@ class Settings(BaseSettings):
     ANTHROPIC_API_KEY: str = ""
 
     # === Model Names ===
-    PLANNER_MODEL: str = "gemini-1.5-flash"
-    WRITER_MODEL: str = "gemini-1.5-pro"
-    EDITOR_MODEL: str = "gemini-1.5-flash"
+    PLANNER_MODEL: str = "qwen3.5-2b"
+    WRITER_MODEL: str = "qwen3.5-2b"
+    EDITOR_MODEL: str = "qwen3.5-2b"
 
-    # === Local Inference (Ollama / vLLM) ===
+    # === Final Evaluation Judge ===
+    FINAL_JUDGE_ENABLED: bool = True
+    FINAL_JUDGE_PROVIDER: AIProvider = AIProvider.VLLM
+    FINAL_JUDGE_MODEL: str = "qwen3.5-2b"
+    FINAL_JUDGE_API_BASE: str | None = None
+    FINAL_JUDGE_API_KEY: str = ""
+
+    # === Local Inference ===
+    VLLM_BASE_URL: str = "http://127.0.0.1:8001/v1"
+    VLLM_API_KEY: str = "local-vllm"
+    VLLM_MODEL_NAME: str = "qwen3.5-2b"
     OLLAMA_BASE_URL: str = "http://localhost:11434"
     LOCAL_MODEL_NAME: str = "llama3"
 

@@ -66,7 +66,6 @@ def test_quality_gate_reports_hard_and_dimension_failures():
         "# Title\n\n# Duplicate\n\nFooter Demo - Example",
         dimension_scores={"brand": 85, "style": 79, "fingerprint": 55},
         forbidden_terms=["footer demo"],
-        grounding_coverage=0.7,
         project_leakage=False,
     )
 
@@ -76,8 +75,31 @@ def test_quality_gate_reports_hard_and_dimension_failures():
         "forbidden_term",
         "style_below_threshold",
         "fingerprint_below_threshold",
-        "grounding_below_threshold",
     }
+
+
+def test_must_cover_accepts_equivalent_content_without_exact_label():
+    report = QualityGate().evaluate(
+        "# Luyện hơi\n\nĐứng thẳng người, giữ vai và cổ thả lỏng khi lấy hơi.",
+        dimension_scores={"brand": 85, "style": 90, "fingerprint": 70},
+        must_cover=["tư thế vai và cổ"],
+    )
+
+    assert report["passed"] is True
+    assert report["violations"] == []
+
+
+def test_must_cover_still_rejects_unrelated_content():
+    report = QualityGate().evaluate(
+        "# Luyện hơi\n\nĐứng thẳng người và bắt đầu thật chậm.",
+        dimension_scores={"brand": 85, "style": 90, "fingerprint": 70},
+        must_cover=["bài tập xì hơi"],
+    )
+
+    assert report["passed"] is False
+    assert report["violations"] == [
+        {"code": "missing_required_content", "items": ["bài tập xì hơi"]}
+    ]
 
 
 def test_quality_loop_rewrites_at_most_twice_with_targeted_feedback():

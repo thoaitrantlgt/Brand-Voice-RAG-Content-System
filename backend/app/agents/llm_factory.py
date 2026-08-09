@@ -22,7 +22,7 @@ class LLMFactory:
     Factory class tạo crewai.LLM theo cấu hình Settings.
     Agent nhận LLM từ factory — không tự khởi tạo LLM (DIP).
 
-    Phase 2: Bổ sung HuggingFace Inference API và Local pipeline mode.
+    Local production inference is served by vLLM through its OpenAI-compatible API.
     """
 
     def __init__(self, settings: Settings) -> None:
@@ -44,12 +44,20 @@ class LLMFactory:
         s = self._settings
 
         if s.RUN_MODE == RunMode.LOCAL:
-            # LOCAL mode: Ollama → default | HUGGINGFACE → dùng HF local pipeline
+            if s.AI_PROVIDER == AIProvider.VLLM:
+                return self._create_vllm(model_name or s.VLLM_MODEL_NAME)
             if s.AI_PROVIDER == AIProvider.HUGGINGFACE:
                 return self._create_huggingface_local(
                     model_name or s.HUGGINGFACE_MODEL_ID
                 )
-            return self._create_local(model_name or s.LOCAL_MODEL_NAME)
+            if s.AI_PROVIDER == AIProvider.OLLAMA:
+                return self._create_ollama(model_name or s.LOCAL_MODEL_NAME)
+            if s.AI_PROVIDER == AIProvider.OPENAI:
+                return self._create_openai(model_name or s.PLANNER_MODEL)
+            raise UnsupportedProviderError(
+                f"Provider '{s.AI_PROVIDER}' is not supported in local mode.",
+                {"supported": ["vllm", "ollama", "huggingface", "openai"]},
+            )
 
         # Cloud mode — dispatch theo provider
         provider = s.AI_PROVIDER
@@ -64,6 +72,8 @@ class LLMFactory:
             return self._create_huggingface_api(
                 model_name or s.HUGGINGFACE_MODEL_ID
             )
+        elif provider == AIProvider.VLLM:
+            return self._create_vllm(model_name or s.VLLM_MODEL_NAME)
         else:
             raise UnsupportedProviderError(
                 f"Provider '{provider}' chưa được hỗ trợ.",
@@ -71,10 +81,15 @@ class LLMFactory:
             )
 
     def _create_google(self, model: str) -> LLM:
+        api_key = self._settings.GOOGLE_API_KEY.strip()
+        if not api_key or api_key.lower().startswith(("your_", "replace-")):
+            raise ValueError("GOOGLE_API_KEY is not configured")
+
         logger.debug("Creating Google LLM | model={}", model)
+        formatted_model = model if model.startswith("gemini/") else f"gemini/{model}"
         return LLM(
-            model=f"gemini/{model}",
-            api_key=self._settings.GOOGLE_API_KEY,
+            model=formatted_model,
+            api_key=api_key,
         )
 
     def _create_openai(self, model: str) -> LLM:
@@ -107,7 +122,22 @@ class LLMFactory:
             api_key=self._settings.ANTHROPIC_API_KEY,
         )
 
-    def _create_local(self, model: str) -> LLM:
+    def _create_vllm(self, model: str) -> LLM:
+        base_url = self._settings.VLLM_BASE_URL.strip()
+        if not base_url:
+            raise ValueError("VLLM_BASE_URL is not configured")
+        api_key = self._settings.VLLM_API_KEY.strip() or "local-vllm"
+        logger.debug("Creating vLLM client | model={} base_url={}", model, base_url)
+        formatted_model = model if model.startswith("openai/") else f"openai/{model}"
+        return LLM(
+            model=formatted_model,
+            api_key=api_key,
+            base_url=base_url,
+            max_tokens=2048,
+            temperature=0.7,
+        )
+
+    def _create_ollama(self, model: str) -> LLM:
         logger.debug("Creating Local LLM (Ollama) | model={}", model)
         return LLM(
             model=f"ollama/{model}",

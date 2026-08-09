@@ -1,17 +1,77 @@
 services:
+  vllm:
+    image: ${VLLM_IMAGE:-vllm/vllm-openai:v0.20.2}
+    ipc: host
+    environment:
+      HF_TOKEN: ${HF_TOKEN:-}
+      VLLM_API_KEY: ${VLLM_API_KEY:-replace-vllm-token}
+    volumes:
+      - huggingface-cache:/root/.cache/huggingface
+      - vllm-cache:/root/.cache/vllm
+    command:
+      - --model
+      - ${VLLM_MODEL:-Qwen/Qwen3.5-2B}
+      - --served-model-name
+      - ${VLLM_MODEL_NAME:-qwen3.5-2b}
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8000"
+      - --max-model-len
+      - ${VLLM_MAX_MODEL_LEN:-8192}
+      - --gpu-memory-utilization
+      - ${VLLM_GPU_MEMORY_UTILIZATION:-0.90}
+      - --api-key
+      - ${VLLM_API_KEY:-replace-vllm-token}
+      - --reasoning-parser
+      - qwen3
+      - --enable-auto-tool-choice
+      - --tool-call-parser
+      - qwen3
+      - --default-chat-template-kwargs
+      - '{"enable_thinking":false}'
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    restart: unless-stopped
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          python3 -c "import os,urllib.request;
+          r=urllib.request.Request('http://127.0.0.1:8000/v1/models',
+          headers={'Authorization':'Bearer '+os.environ['VLLM_API_KEY']});
+          urllib.request.urlopen(r,timeout=5)"
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 15m
+
   api:
     build: ./backend
     env_file: ./backend/.env
     environment:
       AUTH_ENABLED: "true"
       ALLOW_INSECURE_AUTH: "false"
-      OPENAI_API_BASE: http://host.docker.internal:1234/v1
+      RUN_MODE: local
+      AI_PROVIDER: vllm
+      VLLM_BASE_URL: http://vllm:8000/v1
+      VLLM_API_KEY: ${VLLM_API_KEY:-replace-vllm-token}
+      VLLM_MODEL_NAME: ${VLLM_MODEL_NAME:-qwen3.5-2b}
+      PLANNER_MODEL: ${VLLM_MODEL_NAME:-qwen3.5-2b}
+      WRITER_MODEL: ${VLLM_MODEL_NAME:-qwen3.5-2b}
+      EDITOR_MODEL: ${VLLM_MODEL_NAME:-qwen3.5-2b}
+      FINAL_JUDGE_PROVIDER: vllm
+      FINAL_JUDGE_MODEL: ${VLLM_MODEL_NAME:-qwen3.5-2b}
+      FINAL_JUDGE_API_BASE: http://vllm:8000/v1
+      FINAL_JUDGE_API_KEY: ${VLLM_API_KEY:-replace-vllm-token}
       CHROMA_PERSIST_DIR: /app/data/chroma
       UPLOAD_DIR: /app/data/uploads
       BRAND_VOICE_DATASET_DIR: /app/data/brand_voice
-      ALLOWED_ORIGINS: '["http://127.0.0.1:3000","http://localhost:3000"]'
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
     volumes:
       - ./backend/data:/app/data
       - ./backend/config:/app/config
@@ -24,6 +84,9 @@ services:
       timeout: 5s
       retries: 5
       start_period: 45s
+    depends_on:
+      vllm:
+        condition: service_healthy
 
   worker:
     build: ./backend
@@ -32,17 +95,28 @@ services:
     environment:
       AUTH_ENABLED: "true"
       ALLOW_INSECURE_AUTH: "false"
-      OPENAI_API_BASE: http://host.docker.internal:1234/v1
+      RUN_MODE: local
+      AI_PROVIDER: vllm
+      VLLM_BASE_URL: http://vllm:8000/v1
+      VLLM_API_KEY: ${VLLM_API_KEY:-replace-vllm-token}
+      VLLM_MODEL_NAME: ${VLLM_MODEL_NAME:-qwen3.5-2b}
+      PLANNER_MODEL: ${VLLM_MODEL_NAME:-qwen3.5-2b}
+      WRITER_MODEL: ${VLLM_MODEL_NAME:-qwen3.5-2b}
+      EDITOR_MODEL: ${VLLM_MODEL_NAME:-qwen3.5-2b}
+      FINAL_JUDGE_PROVIDER: vllm
+      FINAL_JUDGE_MODEL: ${VLLM_MODEL_NAME:-qwen3.5-2b}
+      FINAL_JUDGE_API_BASE: http://vllm:8000/v1
+      FINAL_JUDGE_API_KEY: ${VLLM_API_KEY:-replace-vllm-token}
       CHROMA_PERSIST_DIR: /app/data/chroma
       UPLOAD_DIR: /app/data/uploads
       BRAND_VOICE_DATASET_DIR: /app/data/brand_voice
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
     volumes:
       - ./backend/data:/app/data
       - ./backend/config:/app/config
     depends_on:
       api:
+        condition: service_healthy
+      vllm:
         condition: service_healthy
     restart: unless-stopped
 
@@ -57,3 +131,7 @@ services:
       api:
         condition: service_healthy
     restart: unless-stopped
+
+volumes:
+  huggingface-cache:
+  vllm-cache:

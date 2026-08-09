@@ -5,6 +5,10 @@ from typing import Any
 
 class QualityGate:
     BOILERPLATE = ("footer demo", "navigation", "breadcrumb")
+    REQUIREMENT_FILLER = {
+        "cách", "hướng", "dẫn", "nội", "dung", "phần", "vấn", "đề",
+        "kỹ", "thuật", "tư", "thế", "và", "của", "cho", "với", "về", "khi",
+    }
 
     def evaluate(
         self,
@@ -12,7 +16,6 @@ class QualityGate:
         *,
         dimension_scores: dict[str, int] | None = None,
         forbidden_terms: list[str] | None = None,
-        grounding_coverage: float = 1.0,
         project_leakage: bool = False,
         must_cover: list[str] | None = None,
         must_avoid: list[str] | None = None,
@@ -46,17 +49,13 @@ class QualityGate:
                         "threshold": threshold,
                     }
                 )
-        if grounding_coverage < 0.8:
-            violations.append(
-                {
-                    "code": "grounding_below_threshold",
-                    "actual": grounding_coverage,
-                    "threshold": 0.8,
-                }
-            )
         if project_leakage:
             violations.append({"code": "project_leakage"})
-        missing = [item for item in (must_cover or []) if item.casefold() not in lowered]
+        missing = [
+            item
+            for item in (must_cover or [])
+            if not self._requirement_is_covered(item, lowered)
+        ]
         if missing:
             violations.append({"code": "missing_required_content", "items": missing})
         avoided = [item for item in (must_avoid or []) if item.casefold() in lowered]
@@ -74,9 +73,20 @@ class QualityGate:
         return {
             "passed": not violations,
             "dimension_scores": scores,
-            "grounding_coverage": grounding_coverage,
             "violations": violations,
         }
+
+    @classmethod
+    def _requirement_is_covered(cls, requirement: str, lowered_content: str) -> bool:
+        normalized = requirement.casefold().strip()
+        if not normalized or normalized in lowered_content:
+            return True
+        tokens = re.findall(r"\b\w+\b", normalized, re.UNICODE)
+        meaningful = [token for token in tokens if token not in cls.REQUIREMENT_FILLER]
+        checked = meaningful or tokens
+        if not checked:
+            return True
+        return all(re.search(rf"\b{re.escape(token)}\b", lowered_content) for token in checked)
 
 
 class GenerationQualityLoop:

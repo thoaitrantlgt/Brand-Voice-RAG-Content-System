@@ -55,7 +55,7 @@ Keywords
 |:-----------|:----------|
 | **Web Framework** | FastAPI 0.115+ |
 | **AI Orchestration** | CrewAI 0.80+ |
-| **LLM Providers** | Google Gemini, OpenAI GPT-4o, Anthropic Claude, HuggingFace, Ollama |
+| **LLM Providers** | vLLM (default), Google Gemini, OpenAI, Anthropic, HuggingFace, Ollama |
 | **RAG — Document Loader** | LangChain Community |
 | **RAG — Vector DB** | ChromaDB (persistent, on-disk) |
 | **RAG — Embeddings** | sentence-transformers (default, local & free) |
@@ -135,8 +135,8 @@ backend/
 
 - **Python** 3.12+
 - **pip** hoặc **uv**
-- *(Tuỳ chọn)* [Ollama](https://ollama.com/) nếu chạy Local mode
-- *(Tuỳ chọn)* GPU + CUDA nếu chạy HuggingFace Local pipeline
+- vLLM OpenAI-compatible endpoint; production Compose loads it on an NVIDIA GPU
+- *(Tuỳ chọn)* Ollama hoặc HuggingFace pipeline cho development legacy
 
 ---
 
@@ -188,7 +188,8 @@ Chỉnh `RUN_MODE` và `AI_PROVIDER` trong file `.env`:
 
 | Kịch bản | Config |
 |:---------|:-------|
-| **Cloud — Google Gemini** (khuyến nghị) | `RUN_MODE=cloud` + `AI_PROVIDER=google` |
+| **Local — vLLM** (production default) | `RUN_MODE=local` + `AI_PROVIDER=vllm` |
+| **Cloud — Google Gemini** | `RUN_MODE=cloud` + `AI_PROVIDER=google` |
 | **Cloud — OpenAI GPT** | `RUN_MODE=cloud` + `AI_PROVIDER=openai` |
 | **Cloud — Anthropic Claude** | `RUN_MODE=cloud` + `AI_PROVIDER=anthropic` |
 | **Cloud — HuggingFace API** | `RUN_MODE=cloud` + `AI_PROVIDER=huggingface` |
@@ -216,8 +217,7 @@ HUGGINGFACE_API_KEY=...
 TAVILY_API_KEY=...
 ```
 
-> **Chạy hoàn toàn miễn phí:** Dùng `EMBEDDING_PROVIDER=huggingface` (không cần API key)
-> + Ollama local cho LLM.
+> **Chạy local mặc định:** dùng `EMBEDDING_PROVIDER=huggingface` cho embeddings và vLLM cho generation/final evaluation.
 
 ---
 

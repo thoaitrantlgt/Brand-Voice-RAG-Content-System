@@ -118,6 +118,7 @@ class ContentCrew(ICrew):
         logger.info("Starting ContentCrew | inputs={}", inputs)
 
         citations: list[dict[str, Any]] = []
+        retrieved_contexts: list[dict[str, Any]] = []
         if self._vector_store is not None and inputs.get("selected_title"):
             from app.rag.retrieval_engine import RetrievalEngine
 
@@ -139,6 +140,16 @@ class ContentCrew(ICrew):
                 }
                 for chunk in chunks
                 if chunk.get("metadata", {}).get("document_id")
+            ]
+            retrieved_contexts = [
+                {
+                    "rank": index,
+                    "document_id": str(chunk.get("metadata", {}).get("document_id", "")),
+                    "chunk_index": int(str(chunk.get("metadata", {}).get("chunk_index", 0)) or 0),
+                    "text": str(chunk.get("text", "")),
+                    "relevance_score": round(1 - float(chunk.get("distance", 1)), 4),
+                }
+                for index, chunk in enumerate(chunks, 1)
             ]
             inputs = {**inputs, "knowledge_context": context[:3000]}
         else:
@@ -181,6 +192,7 @@ class ContentCrew(ICrew):
                 "raw_output": raw,
                 "status": "success",
                 "citations": citations,
+                "retrieved_contexts": retrieved_contexts,
             }
 
             if tracking_tool and tracking_tool.collected_links:

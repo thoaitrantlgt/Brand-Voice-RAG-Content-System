@@ -1,7 +1,7 @@
 <h1 align="center">AI Content OS</h1>
 <p align="center"><strong>Project-scoped, review-gated AI writing for internal content teams.</strong></p>
 
-AI Content OS combines FastAPI, a background worker, SQLite, ChromaDB, CrewAI, LM Studio, and a Next.js operations UI. It turns approved source material into grounded blog drafts while keeping project data isolated and requiring human approval before publication.
+AI Content OS combines FastAPI, a background worker, SQLite, ChromaDB, CrewAI, a GPU-backed vLLM inference service, and a Next.js operations UI. It turns approved source material into reviewable blog drafts while keeping project data isolated and requiring human approval before publication.
 
 > **Release status:** ready for an internal pilot. The fixed 25-topic quality benchmark is still outstanding, so this is not yet an unqualified public release.
 
@@ -50,66 +50,87 @@ Business APIs are under `/api/v1`. `GET /health` and `GET /ready` are root syste
 
 ## Quick Start
 
-### Requirements
+### GPU Server Deployment
 
-- Python 3.12-compatible environment
-- Node.js and npm
-- PowerShell 7 for multipart upload examples
-- LM Studio serving `qwen3.5-2b` at `http://127.0.0.1:1234/v1`
+Requirements:
 
-### 1. Backend
+- Linux server with an NVIDIA GPU and at least 8 GB VRAM for the default 2B model
+- Current NVIDIA driver, Docker Engine, Docker Compose v2, and NVIDIA Container Toolkit
+- Ports `3000` and `8000` reachable through your firewall or reverse proxy
+
+Prepare configuration from the repository root:
+
+```bash
+cp deploy.env.example .env
+cp backend/.env.example backend/.env
+```
+
+Edit root `.env`:
+
+- Replace `VLLM_API_KEY` with a long random internal token.
+- Set `NEXT_PUBLIC_API_BASE_URL` to the backend URL reachable by customer browsers. This value is embedded during the frontend build.
+- Override `VLLM_MODEL`, `VLLM_MAX_MODEL_LEN`, or `VLLM_GPU_MEMORY_UTILIZATION` when required by the GPU.
+
+Edit `backend/.env`:
+
+- Replace every placeholder in `INTERNAL_ACCESS_TOKENS`.
+- Keep `AUTH_ENABLED=true` and `ALLOW_INSECURE_AUTH=false`.
+- Set `ALLOWED_ORIGINS` to the public frontend origins.
+
+Start the complete stack:
+
+```bash
+docker compose up -d --build
+docker compose ps
+docker compose logs -f vllm
+```
+
+The first startup downloads approximately 4.6 GB of Qwen model weights and compiles vLLM kernels. Model and compile caches are persisted in named Docker volumes. Verify the deployment after vLLM becomes healthy:
+
+```bash
+curl http://127.0.0.1:8000/ready
+curl http://127.0.0.1:3000
+```
+
+The default inference configuration is:
+
+```env
+RUN_MODE=local
+AI_PROVIDER=vllm
+VLLM_MODEL=Qwen/Qwen3.5-2B
+VLLM_MODEL_NAME=qwen3.5-2b
+```
+
+Planner, Writer, Editor, profile extraction, and the final evaluator share the same vLLM process. Thinking is disabled server-side and Qwen tool calling is enabled for CrewAI.
+
+### Manual Application Development
+
+Run vLLM separately at `http://127.0.0.1:8001/v1`, then install and start the application:
 
 ```powershell
 cd backend
 python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
 Copy-Item .env.example .env
+.\.venv\Scripts\python.exe run.py
 ```
 
-Set these values in `backend/.env`:
-
-```env
-RUN_MODE=cloud
-AI_PROVIDER=openai
-OPENAI_API_KEY=lm-studio
-OPENAI_API_BASE=http://127.0.0.1:1234/v1
-PLANNER_MODEL=qwen3.5-2b
-WRITER_MODEL=qwen3.5-2b
-EDITOR_MODEL=qwen3.5-2b
-AUTH_ENABLED=true
-ALLOW_INSECURE_AUTH=false
-ENABLE_LEGACY_SYNC_API=false
-INTERNAL_ACCESS_TOKENS={"REPLACE_ADMIN":{"username":"Admin","role":"admin","projects":["acme"]},"REPLACE_WRITER":{"username":"Writer","role":"writer","projects":["acme"]},"REPLACE_REVIEWER":{"username":"Reviewer","role":"reviewer","projects":["acme"]}}
-```
-
-Replace every `REPLACE_*` value with a unique secret before startup. Never commit `backend/.env`.
-
-### 2. Frontend
+In a second terminal:
 
 ```powershell
-cd ..\frontend
+cd backend
+.\.venv\Scripts\python.exe worker.py
+```
+
+In a third terminal:
+
+```powershell
+cd frontend
 npm install
-npm.cmd run build
+npm run dev
 ```
 
-### 3. Run
-
-From the repository root:
-
-```powershell
-cd ..
-.\scripts\start_internal.ps1
-```
-
-Open `http://127.0.0.1:3000`. Check readiness at `http://127.0.0.1:8000/ready`.
-
-Stop all processes with:
-
-```powershell
-.\scripts\stop_internal.ps1
-```
-
-For isolated local development only, set `AUTH_ENABLED=false` and `ALLOW_INSECURE_AUTH=true`, then run `start_internal.ps1 -AllowInsecureLocal`.
+Open `http://127.0.0.1:3000` and check `http://127.0.0.1:8000/ready`.
 
 ## Architecture
 
@@ -121,7 +142,8 @@ flowchart TB
     API --> VECTOR[(Chroma vectors)]
     WORKER[Background worker] --> DB
     WORKER --> VECTOR
-    WORKER --> LLM[LM Studio / qwen3.5-2b]
+    WORKER --> LLM[vLLM / Qwen3.5-2B]
+    LLM --> GPU[NVIDIA GPU]
     READY[/ready] --> DB
     READY --> VECTOR
     READY --> LLM
@@ -184,15 +206,16 @@ New integrations must use project-scoped jobs and generation runs.
 
 | Check | Result |
 | --- | --- |
-| Backend suite | 50 tests passed |
+| Backend suite | 82 tests passed, 1 model-backed eval skipped by default |
 | Frontend | ESLint and production build passed |
-| Readiness | SQLite, Chroma, and `qwen3.5-2b` ready |
+| vLLM deployment | Provider, authenticated readiness, and Compose structure tested; GPU smoke test runs on the deployment server |
 | TSS smoke | Brand 87, style 92, fingerprint 45, persona 55 |
-| Grounding | 1.0 coverage, 2 citations |
 | Rewrite loop | 2 targeted rewrites |
 | Publication | Human approval required |
 
 The smoke run proves the operational path, not broad writing quality. The fingerprint score of 45 remained below threshold and required reviewer judgment. Run and document the fixed 25-topic benchmark before claiming a public quality release.
+
+Offline DeepEval and Ragas benchmarks are documented in [backend/EVALUATION.md](backend/EVALUATION.md). They are internal evaluation tools and are not part of the customer-facing runtime score.
 
 ## Operations
 
@@ -220,15 +243,15 @@ Restore during a maintenance window with the same script's `restore` action. `--
 
 ### Docker
 
-With Docker and LM Studio running on the host:
+On the Linux/NVIDIA deployment host:
 
-```powershell
-docker compose up --build -d
+```bash
+docker compose up -d --build
 docker compose ps
 docker compose down
 ```
 
-`docker-compose.yml` forces secure auth settings for the API and worker. Configure real tokens in `backend/.env` before starting containers.
+`docker-compose.yml` starts vLLM, API, worker, and frontend. It forces secure auth settings for the API and worker; configure real tokens in `backend/.env` and root `.env` before startup.
 
 ## Security And Release Checklist
 

@@ -41,7 +41,6 @@ class PlannerAgent(IAgent):
             role="Content Planner",
             goal="Structures and strategizes blog content based on the input query.",
             backstory=(
-                "/nothink\n"
                 "You're an expert content strategist. You excel at understanding "
                 "a topic, identifying the core message, and organizing the content "
                 "into a clear, logical, and engaging outline."

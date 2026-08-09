@@ -4,7 +4,7 @@ from typing import Any
 
 import httpx
 
-from app.core.config import Settings
+from app.core.config import AIProvider, RunMode, Settings
 
 
 class ReadinessService:
@@ -35,20 +35,48 @@ class ReadinessService:
         return {"ok": ok, "path": str(path), "error": None if ok else "Storage directory missing"}
 
     def _check_model(self) -> dict[str, Any]:
-        if not self.settings.OPENAI_API_BASE:
-            return {"ok": False, "error": "OPENAI_API_BASE is not configured"}
-        url = f"{self.settings.OPENAI_API_BASE.rstrip('/')}/models"
+        if (
+            self.settings.RUN_MODE == RunMode.CLOUD
+            and self.settings.AI_PROVIDER == AIProvider.GOOGLE
+        ):
+            api_key = self.settings.GOOGLE_API_KEY.strip()
+            ok = bool(api_key) and not api_key.lower().startswith(("your_", "replace-"))
+            return {
+                "ok": ok,
+                "provider": AIProvider.GOOGLE.value,
+                "expected": self.settings.WRITER_MODEL,
+                "error": None if ok else "GOOGLE_API_KEY is not configured",
+            }
+
+        provider = self.settings.AI_PROVIDER
+        if provider == AIProvider.VLLM:
+            base_url = self.settings.VLLM_BASE_URL
+            api_key = self.settings.VLLM_API_KEY
+        else:
+            base_url = self.settings.OPENAI_API_BASE
+            api_key = self.settings.OPENAI_API_KEY
+        if not base_url:
+            setting = "VLLM_BASE_URL" if provider == AIProvider.VLLM else "OPENAI_API_BASE"
+            return {"ok": False, "provider": provider.value, "error": f"{setting} is not configured"}
+        url = f"{base_url.rstrip('/')}/models"
         try:
-            response = self.client.get(url)
+            headers = {"Authorization": f"Bearer {api_key}"} if api_key else None
+            response = self.client.get(url, headers=headers)
             response.raise_for_status()
             model_ids = [str(item.get("id", "")) for item in response.json().get("data", [])]
             expected = self.settings.WRITER_MODEL
             ok = expected in model_ids
             return {
                 "ok": ok,
+                "provider": provider.value,
                 "expected": expected,
                 "loaded": model_ids,
                 "error": None if ok else "Expected model is not loaded",
             }
         except Exception as exc:
-            return {"ok": False, "expected": self.settings.WRITER_MODEL, "error": str(exc)}
+            return {
+                "ok": False,
+                "provider": provider.value,
+                "expected": self.settings.WRITER_MODEL,
+                "error": str(exc),
+            }

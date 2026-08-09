@@ -5,6 +5,7 @@ plan.md
 .agents/
 .worktrees/
 .superpowers/
+.env
 
 # Python/runtime
 backend/.venv/

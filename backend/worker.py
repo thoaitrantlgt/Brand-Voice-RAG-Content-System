@@ -9,6 +9,8 @@ from app.repositories.document_repository import DocumentRepository
 from app.api.v1.document_router import get_brand_voice_service
 from app.workers.job_worker import JobWorker, WorkflowJobHandlers
 from app.workers.profile_trainer import ProjectProfileTrainer
+from app.core.config import get_settings
+from app.services.final_evaluation_service import FinalEvaluationService
 
 
 def recover_interrupted_jobs(jobs: JobRepository, runs: GenerationRunRepository) -> int:
@@ -34,6 +36,7 @@ async def main() -> None:
         profiles,
         profile_trainer=trainer,
         brand_voice_service=brand_voice_service,
+        final_evaluator=FinalEvaluationService(get_settings()),
     )
     worker = JobWorker(jobs, handlers.handle)
     logger.info("Internal workflow worker started")

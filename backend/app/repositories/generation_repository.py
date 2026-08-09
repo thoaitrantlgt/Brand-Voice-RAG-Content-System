@@ -68,12 +68,18 @@ class GenerationRunRepository:
                 "FROM generation_citations WHERE run_id = ? ORDER BY id",
                 (run_id,),
             ).fetchall()
+            retrieval_contexts = conn.execute(
+                "SELECT rank, document_id, chunk_index, context_text AS text, relevance_score "
+                "FROM generation_retrieval_contexts WHERE run_id = ? ORDER BY rank",
+                (run_id,),
+            ).fetchall()
             blog = conn.execute(
                 "SELECT id FROM blogs WHERE generation_run_id = ?", (run_id,)
             ).fetchone()
         item = self._decode(row)
         if item is not None:
             item["citations"] = [dict(citation) for citation in citations]
+            item["retrieval_contexts"] = [dict(context) for context in retrieval_contexts]
             item["blog_id"] = blog["id"] if blog else None
         return item
 
@@ -199,6 +205,32 @@ class GenerationRunRepository:
                         item.get("relevance_score"),
                     )
                     for item in citations
+                ],
+            )
+            conn.commit()
+
+    def replace_retrieval_contexts(
+        self, run_id: str, contexts: list[dict[str, Any]]
+    ) -> None:
+        with get_connection(self.db_path) as conn:
+            conn.execute("DELETE FROM generation_retrieval_contexts WHERE run_id = ?", (run_id,))
+            conn.executemany(
+                """
+                INSERT INTO generation_retrieval_contexts(
+                    run_id, rank, document_id, chunk_index, context_text, relevance_score
+                ) VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                [
+                    (
+                        run_id,
+                        int(item.get("rank", index)),
+                        item.get("document_id"),
+                        item.get("chunk_index"),
+                        str(item.get("text", "")),
+                        item.get("relevance_score"),
+                    )
+                    for index, item in enumerate(contexts, 1)
+                    if str(item.get("text", "")).strip()
                 ],
             )
             conn.commit()

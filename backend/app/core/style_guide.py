@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import json
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -36,6 +36,7 @@ class StyleGuide:
     forbidden_replacements: dict[str, str]
     style_rules: dict[str, Any]
     brand_voice_profile: dict[str, Any] | None = None
+    forbidden_terms: list[str] = field(default_factory=list)
 
     @classmethod
     def from_file(cls, path: str | Path) -> "StyleGuide":
@@ -54,6 +55,7 @@ class StyleGuide:
             forbidden_replacements=dict(dictionary.get("forbidden_replacements", {})),
             style_rules=dict(raw.get("style_rules", {})),
             brand_voice_profile=raw.get("brand_voice_profile"),
+            forbidden_terms=list(dictionary.get("forbidden_replacements", {}).keys()),
         )
 
     def with_brand_voice_profile(self, path: str | Path) -> "StyleGuide":
@@ -77,6 +79,11 @@ class StyleGuide:
             for k, v in dictionary.get("forbidden_replacements", {}).items()
         }
         profile_terms = [str(term) for term in dictionary.get("allowed_terms", [])]
+        vocabulary = profile.get("vocabulary", {})
+        standalone_forbidden = [
+            str(term) for term in vocabulary.get("forbidden_terms", []) if str(term).strip()
+        ]
+        all_forbidden = list(dict.fromkeys([*profile_replacements, *standalone_forbidden]))
 
         return StyleGuide(
             company_name=profile.get("company_name") or self.company_name,
@@ -84,6 +91,7 @@ class StyleGuide:
             forbidden_replacements=profile_replacements or self.forbidden_replacements,
             style_rules={**self.style_rules, **profile.get("style_rules", {})},
             brand_voice_profile=profile,
+            forbidden_terms=all_forbidden or self.forbidden_terms,
         )
 
     def to_prompt(self) -> str:
@@ -91,6 +99,12 @@ class StyleGuide:
             f"- Do not use '{forbidden}'. Use '{replacement}' instead."
             for forbidden, replacement in self.forbidden_replacements.items()
         ]
+        replacement_keys = {term.casefold() for term in self.forbidden_replacements}
+        forbidden_lines.extend(
+            f"- Do not use '{term}'. Remove it or rewrite the sentence naturally."
+            for term in self.forbidden_terms
+            if term.casefold() not in replacement_keys
+        )
         principles = [f"- {item}" for item in self.style_rules.get("writing_principles", [])]
         prompt_terms = [term for term in self.allowed_terms if len(term) <= 60][:20]
         allowed = ", ".join(prompt_terms) if prompt_terms else "No explicit allowed terms configured."
@@ -145,7 +159,8 @@ class StyleGuide:
             "",
             "Learned Brand Voice Profile (hard constraints):",
             f"- Brand identity: {json.dumps(compact_identity, ensure_ascii=False)}",
-            f"- Primary audience: {json.dumps(audience_personas[:1], ensure_ascii=False)}",
+            "- Available audience personas (choose the closest match to the explicit User brief): "
+            f"{json.dumps(audience_personas[:4], ensure_ascii=False)}",
             f"- Writing fingerprint: {json.dumps(compact_fingerprint, ensure_ascii=False)}",
             f"- Tone profile: {json.dumps(profile.get('tone', {}), ensure_ascii=False)}",
             f"- Channel guidance: {json.dumps(channel_guidelines, ensure_ascii=False)}",
@@ -194,7 +209,8 @@ class StyleGuide:
 
     def _find_forbidden_terms(self, text: str) -> list[str]:
         found = []
-        for forbidden in self.forbidden_replacements:
+        terms = dict.fromkeys([*self.forbidden_replacements, *self.forbidden_terms])
+        for forbidden in terms:
             if re.search(re.escape(forbidden), text, re.IGNORECASE):
                 found.append(forbidden)
         return found

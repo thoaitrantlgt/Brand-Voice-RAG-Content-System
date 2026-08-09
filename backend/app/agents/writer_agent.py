@@ -30,7 +30,6 @@ class WriterAgent(IAgent):
             role="Content Writer",
             goal="Generates the blog content.",
             backstory=(
-                "/nothink\n"
                 "You're a skilled content writer. You are capable of transforming "
                 "an outline into a comprehensive, engaging, and well-structured "
                 "blog post. You adapt your writing style to match the target audience."
@@ -39,6 +38,6 @@ class WriterAgent(IAgent):
             llm=llm,
             verbose=self._settings.DEBUG,
             allow_delegation=False,
-            max_iter=3,           # Giới hạn số lần lặp — 1.7B model không cần nhiều
-            max_retry_limit=1,    # Chỉ retry 1 lần khi fail
+            max_iter=3,
+            max_retry_limit=1,
         )

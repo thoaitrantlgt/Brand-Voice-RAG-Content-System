@@ -166,6 +166,103 @@ async def test_evaluate_brand_voice_returns_scores(tmp_path):
     assert result.reviewer_checklist == ["Check tone.", "Check facts."]
 
 
+def test_fingerprint_score_tolerates_natural_sentence_variation():
+    service = BrandVoiceService(MagicMock(), Settings())
+    fingerprint = {
+        "sentence_patterns": {
+            "average_sentence_words": 24.6,
+            "short_fragment_ratio": 0.012,
+            "rhetorical_question_ratio": 0.018,
+            "dash_usage_per_1000_words": 1.82,
+            "parenthetical_aside_ratio": 0.186,
+            "active_voice_ratio": 0.81,
+        },
+        "vocabulary_fingerprints": {
+            "transition_phrases": [],
+            "forbidden_cliches": [],
+        },
+        "perspective_matching": {
+            "self_reference": "tôi",
+            "reader_address": "bạn",
+            "stance": "mentor",
+        },
+    }
+    content = (
+        "Tôi hướng dẫn bạn giữ vai và cổ thả lỏng khi lấy hơi. "
+        "Bạn nên hít vào nhẹ nhàng, sau đó xì hơi đều để kiểm soát luồng khí. "
+        "Hãy luyện tập từng bước và dừng lại khi cảm thấy chóng mặt."
+    )
+
+    score, violations, _recommendations = service._score_writing_fingerprint(
+        content, fingerprint
+    )
+
+    assert score >= 60
+    assert violations == []
+
+
+def test_persona_selection_uses_brief_audience_and_scores_concept_tokens():
+    service = BrandVoiceService(MagicMock(), Settings())
+    profile = {
+        "audience_personas": [
+            {
+                "name": "Doanh nhân và nhà quản lý",
+                "priorities": ["đàm phán", "giao tiếp", "uy tín"],
+                "decision_criteria": ["hiệu suất kinh doanh"],
+            },
+            {
+                "name": "Người đam mê thanh nhạc và ca sĩ",
+                "priorities": ["kỹ thuật thanh nhạc", "giọng hát", "kiểm soát hơi thở"],
+                "decision_criteria": ["luyện tập chính xác", "lộ trình phù hợp"],
+            },
+        ],
+        "vocabulary": {},
+        "style_rules": {},
+        "writing_fingerprint": {},
+    }
+    content = (
+        "# Giữ hơi khi hát\n\n## Bài tập\n\n"
+        "Người mới học hát nên luyện kỹ thuật thở bằng cơ hoành để kiểm soát hơi thở "
+        "và giữ giọng hát ổn định. Lộ trình luyện tập cần chính xác và phù hợp."
+    )
+
+    result = service.score_content_against_profile(
+        content,
+        profile,
+        persona_name="Người mới học hát, thường bị hụt hơi",
+    )
+
+    assert result["selected_persona"]["name"] == "Người đam mê thanh nhạc và ca sĩ"
+    assert result["dimension_scores"]["persona_fit"] >= 80
+
+
+def test_descriptive_profile_perspective_matches_canonical_content_labels():
+    service = BrandVoiceService(MagicMock(), Settings())
+    fingerprint = {
+        "sentence_patterns": {},
+        "vocabulary_fingerprints": {},
+        "perspective_matching": {
+            "self_reference": "Chúng tôi (đại diện cho một tập thể chuyên gia).",
+            "reader_address": "Bạn, quý độc giả và học viên.",
+            "stance": "Người dẫn đường tri thức, chuyên gia thanh nhạc chuyên sâu.",
+        },
+    }
+    content = (
+        "Chúng tôi hướng dẫn bạn kiểm soát hơi thở theo từng bước. "
+        "Bạn nên luyện tập chậm và theo dõi phản ứng của cơ thể."
+    )
+
+    score, _violations, recommendations = service._score_writing_fingerprint(
+        content, fingerprint
+    )
+
+    assert service._infer_perspective(content)["self_reference"] == "chúng tôi"
+    assert score == 100
+    assert not any("learned self-reference" in item for item in recommendations)
+    assert not any("learned reader address" in item for item in recommendations)
+    assert not any("learned stance" in item for item in recommendations)
+
+
 def test_brand_voice_review_repository_persists_evaluation_snapshot():
     conn = sqlite3.connect(":memory:")
     conn.row_factory = sqlite3.Row

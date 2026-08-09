@@ -18,7 +18,6 @@ class WriterTask(ITask):
 
         return Task(
             description=(
-                "/nothink\n"
                 "Write a blog post for this title: **{selected_title}**\n"
                 "Keywords: **{keywords}**\n"
                 "Outline: {outline}\n\n"

@@ -21,6 +21,7 @@ class WorkflowJobHandlers:
         quality_gate: QualityGate | None = None,
         profile_trainer: Callable[[str, dict[str, Any]], Awaitable[dict[str, Any]]] | None = None,
         brand_voice_service: Any | None = None,
+        final_evaluator: Any | None = None,
     ):
         self.content_service = content_service
         self.runs = runs
@@ -28,6 +29,7 @@ class WorkflowJobHandlers:
         self.quality_gate = quality_gate or QualityGate()
         self.profile_trainer = profile_trainer
         self.brand_voice_service = brand_voice_service
+        self.final_evaluator = final_evaluator
 
     async def handle(self, job: dict[str, Any]) -> dict[str, Any]:
         if job["job_type"] == "plan":
@@ -86,22 +88,35 @@ class WorkflowJobHandlers:
         content = result["optimized_content"]
         style_report = result.get("style_report") or {}
         citations = list(result.get("citations") or [])
+        retrieved_contexts = list(result.get("retrieved_contexts") or [])
         self.runs.replace_citations(run["run_id"], citations)
-        style_report["grounding_coverage"] = 1.0 if citations else 0.0
+        self.runs.replace_retrieval_contexts(run["run_id"], retrieved_contexts)
         rewrite_count = 0
 
         while True:
             quality_report = self._evaluate(content, style_report, run)
+            terminal_attempt = quality_report["passed"] or rewrite_count >= 2
+            if terminal_attempt and self.final_evaluator is not None:
+                stored = (
+                    self.profiles.get(run["project_id"], run["profile_id"])
+                    if run.get("profile_id")
+                    else None
+                )
+                final_evaluation = self.final_evaluator.evaluate(
+                    content=content,
+                    brief=brief,
+                    quality_report=quality_report,
+                    profile=stored["profile"] if stored else None,
+                )
+                quality_report["final_evaluation"] = final_evaluation
             self.runs.record_attempt(
                 run["run_id"], content, quality_report, self._model_name(), duration_seconds=None
             )
-            if quality_report["passed"] or rewrite_count >= 2:
+            if terminal_attempt:
                 break
-            codes = [item["code"] for item in quality_report["violations"]]
             rewritten = await self.content_service.rewrite_content(
                 content,
-                "Fix only these quality violations while preserving factual meaning: "
-                + ", ".join(codes),
+                self._quality_feedback(quality_report["violations"]),
                 project_id=run["project_id"],
                 profile_id=run["profile_id"],
             )
@@ -137,7 +152,10 @@ class WorkflowJobHandlers:
         if self.brand_voice_service is not None and stored is not None:
             profile = stored["profile"]
             profile_evaluation = self.brand_voice_service.score_content_against_profile(
-                content, profile, channel="blog"
+                content,
+                profile,
+                channel="blog",
+                persona_name=str(run["brief"].get("audience") or ""),
             )
             profile_scores = profile_evaluation.get("dimension_scores") or {}
             brand_parts = [
@@ -176,7 +194,6 @@ class WorkflowJobHandlers:
             content,
             dimension_scores=dimensions,
             forbidden_terms=sorted(set(str(item) for item in forbidden_terms if item)),
-            grounding_coverage=float(style_report.get("grounding_coverage", 1.0)),
             project_leakage=bool(style_report.get("project_leakage", False)),
             must_cover=list(run["brief"].get("must_cover") or []),
             must_avoid=list(run["brief"].get("must_avoid") or []),
@@ -184,6 +201,35 @@ class WorkflowJobHandlers:
         )
         report["profile_evaluation"] = profile_evaluation
         return report
+
+    @staticmethod
+    def _quality_feedback(violations: list[dict[str, Any]]) -> str:
+        details = []
+        for violation in violations:
+            code = str(violation.get("code", "unknown"))
+            if code == "target_length_mismatch":
+                actual = violation.get("actual")
+                minimum = violation.get("minimum")
+                maximum = violation.get("maximum")
+                direction = "shorten" if int(actual or 0) > int(maximum or 0) else "expand"
+                details.append(
+                    f"- target_length_mismatch (actual={actual}; minimum={minimum}; maximum={maximum}): "
+                    f"{direction} the article from {actual} words "
+                    f"to between {minimum} and {maximum} words. Remove repetition before "
+                    "returning the complete article and do not add new sections."
+                )
+                continue
+            values = [
+                f"{key}={value}"
+                for key, value in violation.items()
+                if key != "code"
+            ]
+            details.append(f"- {code}" + (f" ({'; '.join(values)})" if values else ""))
+        return (
+            "Fix only the quality violations below while preserving factual meaning, citations, "
+            "Markdown headings, and all compliant content. Return only the complete revised article.\n"
+            + "\n".join(details)
+        )
 
     def _required_run(self, run_id: str) -> dict[str, Any]:
         run = self.runs.get(run_id)
@@ -193,7 +239,12 @@ class WorkflowJobHandlers:
 
     def _model_name(self) -> str:
         settings = getattr(self.content_service, "_settings", None)
-        return str(getattr(settings, "WRITER_MODEL", "qwen3.5-2b"))
+        if (
+            settings is not None
+            and getattr(settings, "AI_PROVIDER", None) == "vllm"
+        ):
+            return str(getattr(settings, "VLLM_MODEL_NAME", "unknown"))
+        return str(getattr(settings, "WRITER_MODEL", "unknown"))
 
 
 class JobWorker:

@@ -42,6 +42,14 @@ class FakeContentService:
                     "relevance_score": 0.9,
                 }
             ],
+            "retrieved_contexts": [
+                {
+                    "document_id": "doc-k1",
+                    "chunk_index": 0,
+                    "text": "Full retrieved context about safe breath support.",
+                    "relevance_score": 0.9,
+                }
+            ],
         }
 
 
@@ -60,6 +68,31 @@ class FakeBrandVoiceService:
             "violations": [],
             "recommendations": [],
         }
+
+
+class FakeFinalEvaluator:
+    def evaluate(self, **kwargs):
+        return {
+            "status": "evaluated",
+            "summary": "Final explanation",
+            "dimensions": [],
+            "annotations": [],
+            "content_seen": kwargs["content"],
+        }
+
+
+def test_quality_feedback_includes_actionable_violation_details():
+    feedback = WorkflowJobHandlers._quality_feedback(
+        [
+            {"code": "forbidden_term", "terms": ["Thư giãn"]},
+            {"code": "target_length_mismatch", "actual": 430, "minimum": 480, "maximum": 1120},
+        ]
+    )
+
+    assert "forbidden_term" in feedback
+    assert "Thư giãn" in feedback
+    assert "actual=430" in feedback
+    assert "minimum=480" in feedback
 
 
 @pytest.mark.asyncio
@@ -88,7 +121,11 @@ async def test_worker_processes_plan_and_generation_jobs(tmp_path):
         "alpha", "plan", {"run_id": run["run_id"]}, "An", idempotency_key="plan:run"
     )
     handlers = WorkflowJobHandlers(
-        FakeContentService(), runs, profiles, brand_voice_service=FakeBrandVoiceService()
+        FakeContentService(),
+        runs,
+        profiles,
+        brand_voice_service=FakeBrandVoiceService(),
+        final_evaluator=FakeFinalEvaluator(),
     )
     worker = JobWorker(jobs, handlers.handle)
 
@@ -111,7 +148,11 @@ async def test_worker_processes_plan_and_generation_jobs(tmp_path):
     assert generated["status"] == "needs_review"
     assert generated["quality_report"]["passed"] is True
     assert generated["rewrite_count"] == 0
+    assert generated["quality_report"]["final_evaluation"]["summary"] == "Final explanation"
+    assert "grounding_coverage" not in generated["quality_report"]
+    assert "grounding_status" not in generated["quality_report"]
     assert generated["citations"][0]["document_id"] == "doc-k1"
+    assert generated["retrieval_contexts"][0]["text"].startswith("Full retrieved")
 
 
 @pytest.mark.asyncio

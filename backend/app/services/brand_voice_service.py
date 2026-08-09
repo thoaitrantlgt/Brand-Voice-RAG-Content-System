@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import re
+import unicodedata
 import uuid
 from collections import Counter, defaultdict
 from datetime import datetime, timezone
@@ -152,6 +153,9 @@ class BrandVoiceService:
             "dimension_scores": scores,
             "violations": violations,
             "recommendations": recommendations,
+            "selected_persona": self._select_persona(
+                profile.get("audience_personas", []), persona_name
+            ),
         }
 
     def _load_source_documents(
@@ -547,7 +551,14 @@ class BrandVoiceService:
             "contrarian": ["không hẳn", "khong han", "nghe thì", "nghe thi", "nhưng thực tế", "but in practice", "however"],
         }
 
-        self_reference = self._best_marker_label(lowered, self_reference_options, fallback="unspecified")
+        if any(marker in lowered for marker in self_reference_options["chúng tôi"]):
+            self_reference = "chúng tôi"
+        elif any(marker in lowered for marker in self_reference_options["chúng ta"]):
+            self_reference = "chúng ta"
+        else:
+            self_reference = self._best_marker_label(
+                lowered, self_reference_options, fallback="unspecified"
+            )
         reader_address = self._best_marker_label(lowered, reader_options, fallback="reader")
         stance = self._best_marker_label(lowered, stance_markers, fallback="mentor")
         argument_style = "balanced_with_counterpoints" if stance == "contrarian" else "explain_then_recommend"
@@ -1028,12 +1039,19 @@ class BrandVoiceService:
 
         persona_score = 85
         if persona:
-            persona_terms = self._dedupe_strings(
-                persona.get("priorities", []) + persona.get("decision_criteria", [])
+            persona_text = json.dumps(
+                {
+                    "name": persona.get("name", ""),
+                    "priorities": persona.get("priorities", []),
+                    "decision_criteria": persona.get("decision_criteria", []),
+                    "tone_adjustment": persona.get("tone_adjustment", ""),
+                },
+                ensure_ascii=False,
             )
-            persona_hits = sorted({term for term in persona_terms if term.lower() in lowered})
-            persona_score = 90 if not persona_terms else min(100, 55 + len(persona_hits) * 9)
-            if persona_terms and len(persona_hits) < min(2, len(persona_terms)):
+            persona_terms = self._persona_match_tokens(persona_text)
+            persona_hits = persona_terms & self._persona_match_tokens(content)
+            persona_score = 90 if not persona_terms else min(100, 60 + len(persona_hits) * 5)
+            if persona_terms and len(persona_hits) < 4:
                 recommendations.append(f"Adapt the piece more clearly for persona: {persona.get('name')}.")
 
         fingerprint_score, fingerprint_violations, fingerprint_recommendations = self._score_writing_fingerprint(
@@ -1082,7 +1100,8 @@ class BrandVoiceService:
         target_avg = float(target_patterns.get("average_sentence_words") or 0)
         if target_avg > 0:
             avg_diff = abs(float(content_metrics["average_sentence_words"]) - target_avg)
-            score -= min(25, int(avg_diff * 2))
+            tolerance = max(3.0, target_avg * 0.25)
+            score -= min(15, round(max(0.0, avg_diff - tolerance) * 1.5))
             if avg_diff > 8:
                 recommendations.append("Adjust sentence length closer to the learned writing fingerprint.")
 
@@ -1094,14 +1113,14 @@ class BrandVoiceService:
             target_value = float(target_patterns.get(key) or 0)
             actual_value = float(content_metrics.get(key) or 0)
             diff = abs(actual_value - target_value)
-            score -= min(12, int(diff * 100))
+            score -= min(8, round(diff * 40))
             if target_value >= 0.05 and actual_value < target_value / 2:
                 recommendations.append(f"Use more {label} to match the source style.")
 
         target_dash = float(target_patterns.get("dash_usage_per_1000_words") or 0)
         actual_dash = float(content_metrics.get("dash_usage_per_1000_words") or 0)
         dash_diff = abs(actual_dash - target_dash)
-        score -= min(10, int(dash_diff * 2))
+        score -= min(6, round(dash_diff))
 
         target_active = float(target_patterns.get("active_voice_ratio") or 0)
         actual_active = float(content_metrics.get("active_voice_ratio") or 0)
@@ -1133,7 +1152,11 @@ class BrandVoiceService:
         ]:
             expected = str(target_perspective.get(key) or "").strip()
             actual = str(content_perspective.get(key) or "").strip()
-            if expected and expected not in ("unspecified", "reader") and actual != expected:
+            if (
+                expected
+                and expected not in ("unspecified", "reader")
+                and not self._perspective_matches(key, expected, actual)
+            ):
                 score -= 8
                 recommendations.append(f"Match the learned {label}: expected '{expected}', saw '{actual}'.")
 
@@ -1146,13 +1169,68 @@ class BrandVoiceService:
     ) -> dict[str, Any] | None:
         if not personas:
             return None
-        if not persona_name:
+        query = str(persona_name or "").strip()
+        if not query:
             return personas[0]
-        wanted = persona_name.lower()
-        return next(
-            (persona for persona in personas if str(persona.get("name", "")).lower() == wanted),
-            personas[0],
+        wanted = query.casefold()
+        exact = next(
+            (persona for persona in personas if str(persona.get("name", "")).casefold() == wanted),
+            None,
         )
+        if exact is not None:
+            return exact
+
+        query_tokens = self._persona_match_tokens(query)
+        ranked = []
+        for index, persona in enumerate(personas):
+            persona_tokens = self._persona_match_tokens(
+                json.dumps(persona, ensure_ascii=False)
+            )
+            overlap = query_tokens & persona_tokens
+            score = sum(
+                6 if token in {"singing", "business"} else 3 if token == "hoanh" else 1
+                for token in overlap
+            )
+            ranked.append((score, -index, persona))
+        best = max(ranked, key=lambda item: (item[0], item[1]))
+        return best[2] if best[0] > 0 else personas[0]
+
+    @classmethod
+    def _perspective_matches(cls, key: str, expected: str, actual: str) -> bool:
+        expected_tokens = cls._persona_match_tokens(expected)
+        actual_tokens = cls._persona_match_tokens(actual)
+        if not actual_tokens:
+            return False
+        if actual_tokens <= expected_tokens:
+            return True
+        if key == "stance" and actual.casefold() == "mentor":
+            mentor_markers = {
+                "chuyen gia", "dan duong", "huong dan", "su pham", "co van", "advisor"
+            }
+            plain_expected = unicodedata.normalize("NFD", expected.casefold())
+            plain_expected = "".join(
+                char for char in plain_expected if unicodedata.category(char) != "Mn"
+            )
+            return any(marker in plain_expected for marker in mentor_markers)
+        return False
+
+    @staticmethod
+    def _persona_match_tokens(value: str) -> set[str]:
+        normalized = unicodedata.normalize("NFD", value.casefold())
+        normalized = "".join(char for char in normalized if unicodedata.category(char) != "Mn")
+        tokens = set(re.findall(r"[a-z0-9]+", normalized))
+        stopwords = {
+            "va", "voi", "cho", "cua", "cac", "mot", "nhung", "trong", "tu",
+            "den", "theo", "duoc", "nguoi", "nha", "su", "ve", "khi", "de",
+            "and", "the", "for", "with", "from", "that", "this",
+        }
+        aliases = {
+            "hat": "singing", "thanh": "singing", "nhac": "singing",
+            "ca": "singing", "si": "singing",
+            "doanh": "business", "nhan": "business", "quan": "business",
+            "ly": "business", "dam": "business", "phan": "business",
+        }
+        return {aliases.get(token, token) for token in tokens if token not in stopwords}
 
     @staticmethod
     def _dedupe_strings(values: list[Any]) -> list[str]:

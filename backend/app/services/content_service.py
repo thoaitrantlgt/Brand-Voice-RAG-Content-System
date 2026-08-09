@@ -41,6 +41,8 @@ class ContentService:
             )
             if stored:
                 return guide.with_brand_voice_data(stored["profile"])
+        if self._settings is None:
+            return guide
         return guide.with_brand_voice_profile(brand_voice_path)
 
     async def generate_titles(
@@ -196,6 +198,26 @@ class ContentService:
                 title_tag = h1_match.group(1).strip()
 
             optimized_content, style_report = self._style_guide.enforce(raw_output.strip())
+            remaining = list(style_report.get("remaining_forbidden_terms") or [])
+            if remaining and self._settings is not None:
+                logger.warning(
+                    "Editor left forbidden terms; requesting targeted repair | terms={}",
+                    remaining,
+                )
+                try:
+                    repaired = await self.rewrite_content(
+                        optimized_content,
+                        "Remove or naturally rewrite every occurrence of these forbidden terms: "
+                        + ", ".join(remaining)
+                        + ". Preserve the facts, headings, Markdown structure, and article length.",
+                        project_id=project_id,
+                        profile_id=profile_id,
+                    )
+                    optimized_content = repaired["rewritten_text"]
+                    style_report = repaired["style_report"]
+                except ContentGenerationError as exc:
+                    logger.warning("Targeted forbidden-term repair failed: {}", exc)
+
             parsed_data = {
                 "title_tag": title_tag,
                 "meta_description": f"Blog post about {', '.join(keywords[:2])}",

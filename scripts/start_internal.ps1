@@ -1,4 +1,7 @@
-param([switch]$AllowInsecureLocal)
+param(
+    [switch]$AllowInsecureLocal,
+    [switch]$RebuildFrontend
+)
 
 $ErrorActionPreference = "Stop"
 
@@ -24,8 +27,28 @@ if (-not $authEnabled -and -not $AllowInsecureLocal) {
 if ($authEnabled -and $envText -notmatch '(?im)^\s*INTERNAL_ACCESS_TOKENS\s*=\s*\{.+\}\s*$') {
     throw "INTERNAL_ACCESS_TOKENS must contain at least one configured token."
 }
+
+if ($RebuildFrontend) {
+    $processFile = Join-Path $runtime "processes.json"
+    if (Test-Path -LiteralPath $processFile) {
+        & (Join-Path $PSScriptRoot "stop_internal.ps1")
+    }
+
+    Write-Host "Building production frontend..."
+    Push-Location $frontend
+    try {
+        & npm.cmd run build
+        if ($LASTEXITCODE -ne 0) {
+            throw "Frontend production build failed with exit code $LASTEXITCODE."
+        }
+    }
+    finally {
+        Pop-Location
+    }
+}
+
 if (-not (Test-Path -LiteralPath (Join-Path $standalone "server.js"))) {
-    throw "Production frontend build is missing. Run npm.cmd run build from frontend/."
+    throw "Production frontend build is missing. Run .\scripts\start_internal.ps1 -RebuildFrontend from the repository root."
 }
 
 New-Item -ItemType Directory -Force -Path $logs | Out-Null

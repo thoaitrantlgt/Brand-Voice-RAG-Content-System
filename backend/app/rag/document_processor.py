@@ -4,13 +4,14 @@ SRP: Chỉ chịu trách nhiệm đọc file và chia thành chunks.
 OCP: Thêm loại file mới → thêm loader vào registry, không sửa logic chính.
 """
 import uuid
+from functools import partial
 from pathlib import Path
+from typing import Any, Callable
 
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_community.document_loaders import (
     PyPDFLoader,
     TextLoader,
-    UnstructuredMarkdownLoader,
     Docx2txtLoader,
 )
 from langchain_core.documents import Document
@@ -23,10 +24,10 @@ from app.core.logging import logger
 
 # Registry: map extension → LangChain Loader class
 # OCP: thêm loader mới chỉ cần thêm vào dict này
-_LOADER_REGISTRY: dict[str, type] = {
+_LOADER_REGISTRY: dict[str, Callable[..., Any]] = {
     "pdf": PyPDFLoader,
     "txt": TextLoader,
-    "md": UnstructuredMarkdownLoader,
+    "md": partial(TextLoader, encoding="utf-8"),
     "docx": Docx2txtLoader,
 }
 

@@ -54,6 +54,7 @@ async def run(args: argparse.Namespace) -> dict[str, Any]:
     output_dir.mkdir(parents=True, exist_ok=True)
 
     topics = json.loads((dataset_dir / "generation_topics.json").read_text(encoding="utf-8"))
+    article_map = json.loads((dataset_dir / "article_texts.json").read_text(encoding="utf-8"))
     selected = select_topics(topics, args.count)
     settings = Settings(
         BRAND_VOICE_PROFILE_PATH=str(dataset_dir / "brand_voice_profile.json"),
@@ -100,6 +101,17 @@ async def run(args: argparse.Namespace) -> dict[str, Any]:
                     "dimension_scores": evaluation.dimension_scores,
                     "violations": evaluation.violations,
                     "recommendations": evaluation.recommendations,
+                    "brief": {
+                        "topic": topic["title"],
+                        "category": topic["category"],
+                        "audience": "Người học thanh nhạc",
+                        "objective": "Cung cấp hướng dẫn hữu ích và chính xác",
+                        "must_cover": [],
+                        "must_avoid": [],
+                    },
+                    "citations": generated.get("citations") or [],
+                    "retrieved_contexts": generated.get("retrieved_contexts") or [],
+                    "reference_output": article_map.get(topic.get("source_url", ""), {}).get("text"),
                     "passed": evaluation.overall_score >= args.pass_score and not evaluation.violations,
                     "content": content,
                 }
@@ -176,8 +188,8 @@ def main() -> None:
         sys.stdout.reconfigure(encoding="utf-8")
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--dataset-dir", type=Path, default=Path("data/eval/tss_pipeline_v2"))
-    parser.add_argument("--output-dir", type=Path, default=Path("data/eval/tss_generation_qwen3_5_2b"))
-    parser.add_argument("--model", default="qwen3.5-2b")
+    parser.add_argument("--output-dir", type=Path, default=Path("data/eval/tss_generation_gemini_3_5_flash"))
+    parser.add_argument("--model", default="gemini-3.5-flash")
     parser.add_argument("--project", default="tss")
     parser.add_argument("--count", type=int, default=5)
     parser.add_argument("--pass-score", type=int, default=80)

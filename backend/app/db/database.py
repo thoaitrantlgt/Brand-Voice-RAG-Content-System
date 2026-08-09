@@ -7,7 +7,7 @@ from app.core.config import get_settings
 from app.core.logging import logger
 
 
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 
 
 def get_db_path() -> Path:
@@ -257,6 +257,27 @@ def _migration_5(conn: sqlite3.Connection) -> None:
     _ensure_column(conn, "generation_runs", "planned_seo_title", "TEXT")
 
 
+def _migration_6(conn: sqlite3.Connection) -> None:
+    conn.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS generation_retrieval_contexts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            run_id TEXT NOT NULL,
+            rank INTEGER NOT NULL,
+            document_id TEXT,
+            chunk_index INTEGER,
+            context_text TEXT NOT NULL,
+            relevance_score REAL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(run_id, rank),
+            FOREIGN KEY (run_id) REFERENCES generation_runs(run_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_generation_retrieval_run
+            ON generation_retrieval_contexts(run_id, rank);
+        """
+    )
+
+
 def init_db(db_path: Path | None = None) -> None:
     db_path = db_path or get_db_path()
     db_path.parent.mkdir(parents=True, exist_ok=True)
@@ -275,6 +296,7 @@ def init_db(db_path: Path | None = None) -> None:
             (3, _migration_3),
             (4, _migration_4),
             (5, _migration_5),
+            (6, _migration_6),
         )
         for version, migration in migrations:
             if version not in applied:
