@@ -190,6 +190,28 @@ class WorkflowJobHandlers:
             "fingerprint": int(provided.get("fingerprint", 0)),
             "persona": int(provided.get("persona", 0)),
         }
+        profile_scores = profile_evaluation.get("dimension_scores") or {}
+        score_breakdown = {
+            "brand": [
+                {"criterion": "Tone thương hiệu", "score": int(profile_scores.get("tone_alignment", dimensions["brand"]))},
+                {"criterion": "Từ vựng thương hiệu", "score": int(profile_scores.get("vocabulary", dimensions["brand"]))},
+                {"criterion": "Nhận diện thương hiệu", "score": int(profile_scores.get("identity_alignment", dimensions["brand"]))},
+            ],
+            "style": [
+                {"criterion": "Quy tắc trình bày", "score": style_score},
+                {"criterion": "Cấu trúc bài viết", "score": int(profile_scores.get("structure", dimensions["style"]))},
+                {"criterion": "Độ dễ đọc", "score": int(profile_scores.get("readability", dimensions["style"]))},
+            ],
+            "fingerprint": [
+                *(
+                    (profile_evaluation.get("score_breakdown") or {}).get("fingerprint")
+                    or [{"criterion": "Writing fingerprint", "score": int(profile_scores.get("writing_fingerprint_fit", dimensions["fingerprint"]))}]
+                ),
+            ],
+            "persona": [
+                {"criterion": "Mức độ phù hợp persona", "score": int(profile_scores.get("persona_fit", dimensions["persona"]))},
+            ],
+        }
         report = self.quality_gate.evaluate(
             content,
             dimension_scores=dimensions,
@@ -200,6 +222,7 @@ class WorkflowJobHandlers:
             target_length=int(run["brief"].get("target_length") or 0) or None,
         )
         report["profile_evaluation"] = profile_evaluation
+        report["score_breakdown"] = score_breakdown
         return report
 
     @staticmethod

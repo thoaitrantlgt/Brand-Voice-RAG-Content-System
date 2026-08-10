@@ -1,11 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
-import { AlertCircle, ArrowLeft, CheckCircle2, FileCheck2, Loader2, PenLine, Search, Wand2 } from "lucide-react";
+import { AlertCircle, ArrowLeft, CheckCircle2, FileCheck2, Loader2, PenLine, Search, Sparkles, Wand2 } from "lucide-react";
 import { api, Job, waitForJob } from "../lib/api";
 import { useProject } from "../components/ProjectContext";
-import { FinalEvaluation, FinalEvaluationPanel, HighlightedBlog } from "../components/FinalEvaluation";
+import { FinalEvaluation, FinalEvaluationPanel, HighlightedBlog, ScoreBreakdown } from "../components/FinalEvaluation";
 
 type Run = {
   run_id: string;
@@ -18,31 +18,172 @@ type Run = {
     dimension_scores?: Record<string, number>;
     violations?: { code: string; actual?: number; threshold?: number }[];
     final_evaluation?: FinalEvaluation;
+    score_breakdown?: ScoreBreakdown;
   };
   citations: { document_id: string; source_url?: string | null; excerpt: string; relevance_score?: number }[];
   rewrite_count: number;
 };
 
-const initialBrief = {
-  topic: "",
-  keywords: "",
-  audience: "",
-  objective: "",
-  category: "",
-  mustCover: "",
-  mustAvoid: "",
+type Brief = {
+  topic: string;
+  keywords: string;
+  audience: string;
+  objective: string;
+  category: string;
+  mustCover: string;
+  mustAvoid: string;
+  targetLength: number;
+};
+
+type BriefPreset = {
+  id: string;
+  label: string;
+  description: string;
+  replaceAll: boolean;
+  values: Brief | Partial<Brief>;
+};
+
+type DraftStatus = "loading" | "saved" | "unavailable";
+
+const DEMO_BRIEF: Brief = {
+  topic: "Cách kiểm soát hơi khi hát cho người mới",
+  keywords: "kiểm soát hơi, hỗ trợ hơi thở, luyện thanh",
+  audience: "Học viên thanh nhạc mới bắt đầu",
+  objective: "Hướng dẫn người đọc nhận biết và cải thiện cách lấy hơi khi hát",
+  category: "Kỹ thuật thanh nhạc",
+  mustCover: "dấu hiệu hụt hơi, bài tập kiểm soát luồng hơi",
+  mustAvoid: "cam kết kết quả tuyệt đối, thuật ngữ quá hàn lâm",
   targetLength: 800,
 };
 
+const BRIEF_PRESETS: BriefPreset[] = [
+  {
+    id: "demo-tss",
+    label: "Demo TSS",
+    description: "Điền toàn bộ form bằng dữ liệu mẫu thanh nhạc.",
+    replaceAll: true,
+    values: DEMO_BRIEF,
+  },
+  {
+    id: "how-to",
+    label: "Bài hướng dẫn",
+    description: "Cấu hình bài hướng dẫn từng bước, dễ áp dụng.",
+    replaceAll: false,
+    values: {
+      objective: "Hướng dẫn người đọc hiểu vấn đề và áp dụng các bước thực hành cụ thể",
+      category: "Hướng dẫn",
+      mustCover: "giải thích dễ hiểu, các bước thực hiện, ví dụ thực tế",
+      mustAvoid: "thuật ngữ khó hiểu, cam kết kết quả tuyệt đối",
+      targetLength: 800,
+    },
+  },
+  {
+    id: "problem-solving",
+    label: "Giải quyết vấn đề",
+    description: "Cấu hình bài phân tích dấu hiệu, nguyên nhân và cách khắc phục.",
+    replaceAll: false,
+    values: {
+      objective: "Giúp người đọc nhận biết nguyên nhân và lựa chọn cách xử lý phù hợp",
+      category: "Giải pháp",
+      mustCover: "dấu hiệu nhận biết, nguyên nhân thường gặp, cách khắc phục",
+      mustAvoid: "hù dọa người đọc, cam kết kết quả tuyệt đối",
+      targetLength: 900,
+    },
+  },
+  {
+    id: "solution-intro",
+    label: "Giới thiệu giải pháp",
+    description: "Cấu hình bài giới thiệu lợi ích và đối tượng phù hợp.",
+    replaceAll: false,
+    values: {
+      objective: "Giới thiệu giải pháp và giúp người đọc đánh giá mức độ phù hợp",
+      category: "Giải pháp",
+      mustCover: "vấn đề cần giải quyết, lợi ích chính, đối tượng phù hợp, bước tiếp theo",
+      mustAvoid: "quảng cáo phóng đại, thông tin không kiểm chứng",
+      targetLength: 1000,
+    },
+  },
+];
+
+const BRIEF_STORAGE_PREFIX = "contentos_brief_draft:";
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function parseStoredBrief(raw: string | null): Brief | null {
+  if (!raw) return null;
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    const candidate = isRecord(parsed) && isRecord(parsed.brief) ? parsed.brief : parsed;
+    if (!isRecord(candidate)) return null;
+    const storedLength = candidate.targetLength;
+    return {
+      topic: typeof candidate.topic === "string" ? candidate.topic : DEMO_BRIEF.topic,
+      keywords: typeof candidate.keywords === "string" ? candidate.keywords : DEMO_BRIEF.keywords,
+      audience: typeof candidate.audience === "string" ? candidate.audience : DEMO_BRIEF.audience,
+      objective: typeof candidate.objective === "string" ? candidate.objective : DEMO_BRIEF.objective,
+      category: typeof candidate.category === "string" ? candidate.category : DEMO_BRIEF.category,
+      mustCover: typeof candidate.mustCover === "string" ? candidate.mustCover : DEMO_BRIEF.mustCover,
+      mustAvoid: typeof candidate.mustAvoid === "string" ? candidate.mustAvoid : DEMO_BRIEF.mustAvoid,
+      targetLength: typeof storedLength === "number" && Number.isInteger(storedLength) && storedLength >= 300 && storedLength <= 3000
+        ? storedLength
+        : DEMO_BRIEF.targetLength,
+    };
+  } catch {
+    return null;
+  }
+}
+
 export default function CreatePage() {
-  const { projectId } = useProject();
-  const [brief, setBrief] = useState(initialBrief);
+  const { projectId, loading: projectLoading } = useProject();
+  const [brief, setBrief] = useState<Brief>({ ...DEMO_BRIEF });
+  const [loadedProjectId, setLoadedProjectId] = useState<string | null>(null);
+  const [draftStatus, setDraftStatus] = useState<DraftStatus>("loading");
   const [run, setRun] = useState<Run | null>(null);
   const [outlineText, setOutlineText] = useState("");
   const [stage, setStage] = useState<"brief" | "planning" | "outline" | "generating" | "result">("brief");
   const [error, setError] = useState("");
 
+  useEffect(() => {
+    if (projectLoading) return;
+    const timer = window.setTimeout(() => {
+      try {
+        const stored = window.localStorage.getItem(BRIEF_STORAGE_PREFIX + projectId);
+        setBrief(parseStoredBrief(stored) ?? { ...DEMO_BRIEF });
+        setDraftStatus("saved");
+      } catch {
+        setBrief({ ...DEMO_BRIEF });
+        setDraftStatus("unavailable");
+      }
+      setLoadedProjectId(projectId);
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [projectId, projectLoading]);
+
+  useEffect(() => {
+    if (projectLoading || loadedProjectId !== projectId) return;
+    const timer = window.setTimeout(() => {
+      try {
+        window.localStorage.setItem(
+          BRIEF_STORAGE_PREFIX + projectId,
+          JSON.stringify({ version: 1, brief }),
+        );
+        setDraftStatus("saved");
+      } catch {
+        setDraftStatus("unavailable");
+      }
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [brief, loadedProjectId, projectId, projectLoading]);
+
   const list = (value: string) => value.split(/[,\n]/).map((item) => item.trim()).filter(Boolean);
+
+  const applyPreset = (preset: BriefPreset) => {
+    setBrief((current) => preset.replaceAll
+      ? { ...(preset.values as Brief) }
+      : { ...current, ...preset.values });
+  };
 
   const createPlan = async () => {
     setError("");
@@ -94,7 +235,6 @@ export default function CreatePage() {
 
   const reset = () => {
     setRun(null);
-    setBrief(initialBrief);
     setOutlineText("");
     setError("");
     setStage("brief");
@@ -111,6 +251,31 @@ export default function CreatePage() {
 
       {stage === "brief" && (
         <section className="max-w-3xl space-y-5">
+          <div className="rounded-md border border-indigo-200 bg-indigo-50/70 p-4">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <h2 className="flex items-center gap-2 text-sm font-semibold text-indigo-950"><Sparkles size={16} /> Nhập nhanh</h2>
+                <p className="mt-1 text-xs leading-5 text-indigo-700">Mẫu chung giữ nguyên Chủ đề, Từ khóa và Đối tượng đọc.</p>
+              </div>
+              <div className={"flex shrink-0 items-center gap-1.5 text-xs " + (draftStatus === "unavailable" ? "text-amber-700" : "text-emerald-700")}>
+                {draftStatus === "loading" ? <Loader2 className="animate-spin" size={14} /> : draftStatus === "saved" ? <CheckCircle2 size={14} /> : <AlertCircle size={14} />}
+                {draftStatus === "loading" ? "Đang tải bản nháp" : draftStatus === "saved" ? "Đã tự lưu" : "Không thể tự lưu"}
+              </div>
+            </div>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {BRIEF_PRESETS.map((preset) => (
+                <button
+                  key={preset.id}
+                  type="button"
+                  title={preset.description}
+                  className="rounded-md border border-indigo-200 bg-white px-3 py-2 text-xs font-semibold text-indigo-800 shadow-sm transition hover:border-indigo-300 hover:bg-indigo-100"
+                  onClick={() => applyPreset(preset)}
+                >
+                  {preset.label}
+                </button>
+              ))}
+            </div>
+          </div>
           <div className="grid gap-4 md:grid-cols-2">
             <Field label="Chủ đề" value={brief.topic} onChange={(value) => setBrief({ ...brief, topic: value })} />
             <Field label="Từ khóa" value={brief.keywords} onChange={(value) => setBrief({ ...brief, keywords: value })} />
@@ -155,7 +320,7 @@ export default function CreatePage() {
             </section>
             <section className="rounded-md border border-slate-200 bg-white p-4">
               <h3 className="mb-3 font-semibold">Lý do chấm điểm</h3>
-              <FinalEvaluationPanel evaluation={run.quality_report.final_evaluation} />
+              <FinalEvaluationPanel evaluation={run.quality_report.final_evaluation} scoreBreakdown={run.quality_report.score_breakdown} />
             </section>
             <section className="rounded-md border border-slate-200 bg-white p-4">
               <h3 className="mb-3 font-semibold">Nguồn đã dùng</h3>

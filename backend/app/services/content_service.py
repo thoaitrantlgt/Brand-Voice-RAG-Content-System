@@ -1,6 +1,7 @@
 """Content generation business logic."""
 from __future__ import annotations
 
+import asyncio
 import json
 import re
 from typing import Any
@@ -55,12 +56,13 @@ class ContentService:
         logger.info("Generating draft plan | keywords={} web_search={}", keywords, use_web_search)
 
         try:
-            result = self._crew.run(
+            result = await asyncio.to_thread(
+                self._crew.run,
                 inputs={
                     "keywords": ", ".join(keywords),
                     "use_web_search": use_web_search,
                     "project_id": project_id,
-                }
+                },
             )
             raw_output = result.get("raw_output", "")
             parsed_data = self._parse_planner_output(raw_output, keywords)
@@ -175,7 +177,8 @@ class ContentService:
 
         try:
             self._style_guide = self._load_style_guide(project_id, profile_id)
-            result = self._crew.run(
+            result = await asyncio.to_thread(
+                self._crew.run,
                 inputs={
                     "keywords": ", ".join(keywords),
                     "selected_title": selected_title,
@@ -185,7 +188,7 @@ class ContentService:
                     "project_id": project_id,
                     "profile_id": profile_id,
                     "brief_context": brief_context,
-                }
+                },
             )
             raw_output = result.get("raw_output", "")
             logger.info("Raw output length: {} chars | preview: {}", len(raw_output), raw_output[:200])
@@ -288,7 +291,10 @@ class ContentService:
                 "Return only the rewritten text. Do not explain your changes."
             )
 
-            response = llm.call([{"role": "user", "content": prompt}])
+            response = await asyncio.to_thread(
+                llm.call,
+                [{"role": "user", "content": prompt}],
+            )
             rewritten_text, style_report = self._style_guide.enforce(response.strip())
             return {
                 "rewritten_text": rewritten_text,

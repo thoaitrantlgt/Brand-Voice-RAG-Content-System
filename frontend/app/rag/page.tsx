@@ -17,14 +17,16 @@ const tabs: { id: Cluster; label: string }[] = [
 
 export default function SourcesPage() {
   const { projectId, refresh: refreshProjects } = useProject();
-  const [cluster, setCluster] = useState<Cluster>("knowledge");
+  const [cluster, setCluster] = useState<Cluster>("brand_voice");
   const [documents, setDocuments] = useState<Document[]>([]);
   const [profiles, setProfiles] = useState<Profile[]>([]);
+  const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
+    setLoading(true);
     setError("");
     try {
       const [documentPayload, profilePayload] = await Promise.all([
@@ -34,6 +36,7 @@ export default function SourcesPage() {
       setDocuments(documentPayload.documents);
       setProfiles(profilePayload);
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Không thể tải dữ liệu"); }
+    finally { setLoading(false); }
   }, [projectId]);
 
   useEffect(() => {
@@ -106,20 +109,22 @@ export default function SourcesPage() {
       </div>
 
       <section className="mb-9">
-        <div className="mb-4 flex items-center justify-between"><h2 className="font-semibold">Tài liệu · {visible.length}</h2><label className="btn btn-primary"><Upload size={16} /> Upload<input ref={fileRef} className="hidden" type="file" accept=".pdf,.txt,.md,.docx" disabled={busy} onChange={(event) => { const file = event.target.files?.[0]; if (file) void upload(file); }} /></label></div>
+        <div className="mb-4 flex items-center justify-between"><h2 className="font-semibold">Tài liệu · {loading ? "Đang tải..." : visible.length}</h2><label className="btn btn-primary"><Upload size={16} /> Upload<input ref={fileRef} className="hidden" type="file" accept=".pdf,.txt,.md,.docx" disabled={busy} onChange={(event) => { const file = event.target.files?.[0]; if (file) void upload(file); }} /></label></div>
         <div className="overflow-hidden rounded-md border border-slate-200 bg-white">
           <table className="w-full text-left text-sm"><thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr><th className="px-4 py-3">File</th><th className="px-4 py-3">Index</th><th className="px-4 py-3">Approval</th><th className="w-24 px-4 py-3"></th></tr></thead><tbody className="divide-y divide-slate-100">
-            {visible.map((document) => <tr key={document.document_id}><td className="px-4 py-3"><div className="flex items-center gap-2"><FileText size={16} className="text-slate-400" /><span className="font-medium">{document.filename}</span></div></td><td className="px-4 py-3 text-slate-500">{document.total_chunks} chunks · {document.status}</td><td className="px-4 py-3">{cluster === "brand_voice" ? <span className={`badge ${document.approval_status === "approved" ? "badge-green" : "badge-amber"}`}>{document.approval_status}</span> : <span className="text-slate-400">-</span>}</td><td className="px-4 py-3"><div className="flex justify-end gap-1">{cluster === "brand_voice" && document.approval_status !== "approved" && <button className="btn btn-ghost p-2" title="Approve sample" onClick={() => void approve(document.document_id)}><Check size={16} /></button>}<button className="btn btn-ghost btn-danger p-2" title="Delete" onClick={() => void remove(document.document_id)}><Trash2 size={16} /></button></div></td></tr>)}
-            {visible.length === 0 && <tr><td colSpan={4} className="px-4 py-12 text-center text-slate-400"><Database className="mx-auto mb-2" size={24} />Chưa có tài liệu</td></tr>}
+            {loading && <tr><td colSpan={4} className="px-4 py-12 text-center text-slate-500"><Loader2 className="mx-auto mb-3 animate-spin text-emerald-600" size={24} /><span className="font-medium text-slate-700">Đang tải tài liệu và 10 writing samples...</span><span className="mt-1 block text-xs text-slate-400">Dữ liệu sẽ tự hiển thị ngay khi tải xong.</span></td></tr>}
+            {!loading && visible.map((document) => <tr key={document.document_id}><td className="px-4 py-3"><div className="flex items-center gap-2"><FileText size={16} className="text-slate-400" /><span className="font-medium">{document.filename}</span></div></td><td className="px-4 py-3 text-slate-500">{document.total_chunks} chunks · {document.status}</td><td className="px-4 py-3">{cluster === "brand_voice" ? <span className={`badge ${document.approval_status === "approved" ? "badge-green" : "badge-amber"}`}>{document.approval_status}</span> : <span className="text-slate-400">-</span>}</td><td className="px-4 py-3"><div className="flex justify-end gap-1">{cluster === "brand_voice" && document.approval_status !== "approved" && <button className="btn btn-ghost p-2" title="Approve sample" onClick={() => void approve(document.document_id)}><Check size={16} /></button>}<button className="btn btn-ghost btn-danger p-2" title="Delete" onClick={() => void remove(document.document_id)}><Trash2 size={16} /></button></div></td></tr>)}
+            {!loading && visible.length === 0 && <tr><td colSpan={4} className="px-4 py-12 text-center text-slate-400"><Database className="mx-auto mb-2" size={24} />Chưa có tài liệu</td></tr>}
           </tbody></table>
         </div>
       </section>
 
       <section>
-        <div className="mb-4 flex items-center justify-between"><div><h2 className="font-semibold">Brand Profile versions</h2><p className="mt-1 text-xs text-slate-500">Approved samples: {approvedSamples}</p></div><button className="btn btn-primary" disabled={busy || approvedSamples < 5} onClick={() => void train()}>{busy ? <Loader2 className="animate-spin" size={16} /> : <Volume2 size={16} />} Train profile</button></div>
+        <div className="mb-4 flex items-center justify-between"><div><h2 className="font-semibold">Brand Profile versions</h2><p className="mt-1 text-xs text-slate-500">Approved samples: {loading ? "Đang tải..." : approvedSamples}</p></div><button className="btn btn-primary" disabled={loading || busy || approvedSamples < 5} onClick={() => void train()}>{busy ? <Loader2 className="animate-spin" size={16} /> : <Volume2 size={16} />} Train profile</button></div>
         <div className="overflow-hidden rounded-md border border-slate-200 bg-white">
-          {profiles.map((profile) => <div key={profile.profile_id} className="flex items-center gap-4 border-b border-slate-100 px-4 py-4 last:border-0"><div className="flex h-9 w-9 items-center justify-center rounded-md bg-emerald-50 text-emerald-700"><Volume2 size={17} /></div><div className="min-w-0 flex-1"><div className="font-medium">{profile.name} v{profile.version}</div><div className="text-xs text-slate-500">{profile.source_document_ids.length} samples · {profile.profile_id}</div></div><span className={`badge ${profile.is_active ? "badge-green" : "badge-blue"}`}>{profile.status}</span>{!profile.is_active && <button className="btn btn-secondary" onClick={async () => { await api(`/projects/${projectId}/profiles/${profile.profile_id}/activate`, { method: "POST" }); await load(); }}>Activate</button>}</div>)}
-          {profiles.length === 0 && <div className="px-4 py-12 text-center text-sm text-slate-400">Chưa có profile version</div>}
+          {loading && <div className="flex items-center justify-center gap-2 px-4 py-12 text-sm text-slate-500"><Loader2 className="animate-spin text-emerald-600" size={18} />Đang tải profile...</div>}
+          {!loading && profiles.map((profile) => <div key={profile.profile_id} className="flex items-center gap-4 border-b border-slate-100 px-4 py-4 last:border-0"><div className="flex h-9 w-9 items-center justify-center rounded-md bg-emerald-50 text-emerald-700"><Volume2 size={17} /></div><div className="min-w-0 flex-1"><div className="font-medium">{profile.name} v{profile.version}</div><div className="text-xs text-slate-500">{profile.source_document_ids.length} samples · {profile.profile_id}</div></div><span className={`badge ${profile.is_active ? "badge-green" : "badge-blue"}`}>{profile.status}</span>{!profile.is_active && <button className="btn btn-secondary" onClick={async () => { await api(`/projects/${projectId}/profiles/${profile.profile_id}/activate`, { method: "POST" }); await load(); }}>Activate</button>}</div>)}
+          {!loading && profiles.length === 0 && <div className="px-4 py-12 text-center text-sm text-slate-400">Chưa có profile version</div>}
         </div>
       </section>
     </main>

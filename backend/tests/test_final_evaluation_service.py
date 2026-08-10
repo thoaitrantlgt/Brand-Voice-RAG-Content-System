@@ -58,7 +58,10 @@ def test_final_evaluation_preserves_scores_and_maps_exact_quote():
         {
           "summary": "Bài đúng cấu trúc nhưng còn một hướng dẫn cần rõ hơn.",
           "dimensions": [
-            {"metric": "brand", "score": 1, "reason": "Giọng hướng dẫn phù hợp."},
+            {"metric": "brand", "score": 1, "reason": "Giọng hướng dẫn phù hợp.", "deductions": [
+              {"criterion": "Tone", "points": 3, "reason": "Một số câu còn trung tính.", "suggestion": "Dùng giọng hướng dẫn rõ hơn."},
+              {"criterion": "Từ vựng", "points": 1, "reason": "Thiếu từ khóa thương hiệu.", "suggestion": "Bổ sung thuật ngữ ưu tiên."}
+            ]},
             {"metric": "style", "score": 2, "reason": "Cấu trúc rõ."},
             {"metric": "fingerprint", "score": 3, "reason": "Nhịp câu chưa thật đặc trưng."},
             {"metric": "persona", "score": 4, "reason": "Phù hợp người mới."}
@@ -103,6 +106,9 @@ def test_final_evaluation_preserves_scores_and_maps_exact_quote():
     assert result["status"] == "evaluated"
     assert result["overall_score"] == 76
     assert [item["score"] for item in result["dimensions"]] == [84, 92, 55, 73]
+    assert [item["points"] for item in result["dimensions"][0]["deductions"]] == [12, 4]
+    assert sum(item["points"] for item in result["dimensions"][0]["deductions"]) == 16
+    assert sum(item["points"] for item in result["dimensions"][2]["deductions"]) == 45
     assert result["annotations"][0]["quote"] == "Tập đều mỗi ngày."
     assert result["annotations"][0]["line"] == 7
     assert result["annotations"][0]["column"] == 1
@@ -130,6 +136,65 @@ def test_final_evaluation_returns_safe_error_payload():
     assert result["passed"] is False
     assert result["annotations"] == []
     assert result["dimensions"][0]["score"] == 50
+    assert result["dimensions"][0]["deductions"][0]["points"] == 50
+
+
+def test_final_evaluation_fallback_uses_real_component_scores_for_deductions():
+    service = FinalEvaluationService(Settings(FINAL_JUDGE_ENABLED=False))
+    result = service.evaluate(
+        content="# Test\n\nBody",
+        brief={"topic": "Test"},
+        quality_report={
+            "passed": True,
+            "dimension_scores": {"brand": 90},
+            "score_breakdown": {
+                "brand": [
+                    {"criterion": "Tone thương hiệu", "score": 100},
+                    {"criterion": "Từ vựng thương hiệu", "score": 80},
+                    {"criterion": "Nhận diện thương hiệu", "score": 90},
+                ]
+            },
+        },
+    )
+
+    deductions = result["dimensions"][0]["deductions"]
+    assert [item["criterion"] for item in deductions] == [
+        "Từ vựng thương hiệu",
+        "Nhận diện thương hiệu",
+    ]
+    assert sum(item["points"] for item in deductions) == 10
+
+
+def test_component_scores_split_a_collapsed_model_deduction():
+    service = FinalEvaluationService(Settings())
+    deductions = service._normalize_deductions(
+        [
+            {
+                "criterion": "Nhận diện thương hiệu",
+                "points": 11,
+                "reason": "Định vị thương hiệu chưa đủ rõ.",
+                "suggestion": "Bổ sung thông điệp định vị.",
+            }
+        ],
+        metric="brand",
+        score=89,
+        reason="Brand đạt 89/100.",
+        quality_report={
+            "score_breakdown": {
+                "brand": [
+                    {"criterion": "Tone thương hiệu", "score": 100},
+                    {"criterion": "Từ vựng thương hiệu", "score": 90},
+                    {"criterion": "Nhận diện thương hiệu", "score": 76},
+                ]
+            }
+        },
+    )
+
+    assert [(item["criterion"], item["points"]) for item in deductions] == [
+        ("Từ vựng thương hiệu", 3),
+        ("Nhận diện thương hiệu", 8),
+    ]
+    assert deductions[1]["reason"] == "Định vị thương hiệu chưa đủ rõ."
 
 
 def test_final_evaluation_accepts_improvement_for_passing_metric():

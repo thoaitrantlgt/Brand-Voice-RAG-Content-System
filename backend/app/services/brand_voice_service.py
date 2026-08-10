@@ -146,11 +146,12 @@ class BrandVoiceService:
         channel: str = "blog",
         persona_name: str | None = None,
     ) -> dict[str, Any]:
-        scores, violations, recommendations = self._score_content_against_profile(
-            content, profile, channel, persona_name
+        scores, violations, recommendations, score_breakdown = self._score_content_against_profile(
+            content, profile, channel, persona_name, include_breakdown=True
         )
         return {
             "dimension_scores": scores,
+            "score_breakdown": score_breakdown,
             "violations": violations,
             "recommendations": recommendations,
             "selected_persona": self._select_persona(
@@ -960,7 +961,8 @@ class BrandVoiceService:
         profile: dict[str, Any],
         channel: str,
         persona_name: str | None = None,
-    ) -> tuple[dict[str, int], list[str], list[str]]:
+        include_breakdown: bool = False,
+    ) -> Any:
         vocabulary = profile.get("vocabulary", {})
         style_rules = profile.get("style_rules", {})
         channel_guidelines = profile.get("channel_guidelines", {}).get(channel, {})
@@ -1054,10 +1056,21 @@ class BrandVoiceService:
             if persona_terms and len(persona_hits) < 4:
                 recommendations.append(f"Adapt the piece more clearly for persona: {persona.get('name')}.")
 
-        fingerprint_score, fingerprint_violations, fingerprint_recommendations = self._score_writing_fingerprint(
+        fingerprint_result = self._score_writing_fingerprint(
             content,
             writing_fingerprint,
+            include_breakdown=include_breakdown,
         )
+        if include_breakdown:
+            (
+                fingerprint_score,
+                fingerprint_violations,
+                fingerprint_recommendations,
+                fingerprint_breakdown,
+            ) = fingerprint_result
+        else:
+            fingerprint_score, fingerprint_violations, fingerprint_recommendations = fingerprint_result
+            fingerprint_breakdown = []
         violations.extend(fingerprint_violations)
         recommendations.extend(fingerprint_recommendations)
 
@@ -1076,15 +1089,26 @@ class BrandVoiceService:
             "persona_fit": max(0, min(100, persona_score)),
             "writing_fingerprint_fit": max(0, min(100, fingerprint_score)),
         }
+        if include_breakdown:
+            return scores, violations, recommendations, {"fingerprint": fingerprint_breakdown}
         return scores, violations, recommendations
 
     def _score_writing_fingerprint(
         self,
         content: str,
         writing_fingerprint: dict[str, Any],
-    ) -> tuple[int, list[str], list[str]]:
+        include_breakdown: bool = False,
+    ) -> Any:
         if not writing_fingerprint:
-            return 85, [], []
+            result = (85, [], [])
+            if include_breakdown:
+                return *result, [{
+                    "criterion": "Dữ liệu writing fingerprint",
+                    "score": 85,
+                    "reason": "Profile chưa có đủ dữ liệu fingerprint để đối chiếu chi tiết.",
+                    "suggestion": "Bổ sung thêm writing samples đã được duyệt rồi train lại profile.",
+                }]
+            return result
 
         target_patterns = writing_fingerprint.get("sentence_patterns", {})
         target_vocab = writing_fingerprint.get("vocabulary_fingerprints", {})
@@ -1096,36 +1120,72 @@ class BrandVoiceService:
         score = 100
         violations = []
         recommendations = []
+        breakdown: list[dict[str, Any]] = []
+
+        def deduct(criterion: str, points: int, reason: str, suggestion: str) -> None:
+            nonlocal score
+            points = max(0, int(points))
+            if points == 0:
+                return
+            score -= points
+            breakdown.append(
+                {
+                    "criterion": criterion,
+                    "score": max(0, 100 - points),
+                    "reason": reason,
+                    "suggestion": suggestion,
+                }
+            )
 
         target_avg = float(target_patterns.get("average_sentence_words") or 0)
         if target_avg > 0:
             avg_diff = abs(float(content_metrics["average_sentence_words"]) - target_avg)
             tolerance = max(3.0, target_avg * 0.25)
-            score -= min(15, round(max(0.0, avg_diff - tolerance) * 1.5))
+            deduct(
+                "Độ dài câu",
+                min(15, round(max(0.0, avg_diff - tolerance) * 1.5)),
+                f"Độ dài câu trung bình lệch {avg_diff:.1f} từ so với fingerprint mẫu.",
+                "Điều chỉnh độ dài câu gần hơn với nhịp câu đã học từ writing samples.",
+            )
             if avg_diff > 8:
                 recommendations.append("Adjust sentence length closer to the learned writing fingerprint.")
 
-        for key, label in [
-            ("short_fragment_ratio", "short fragment rhythm"),
-            ("rhetorical_question_ratio", "rhetorical question rhythm"),
-            ("parenthetical_aside_ratio", "parenthetical aside rhythm"),
+        for key, label, criterion in [
+            ("short_fragment_ratio", "short fragment rhythm", "Nhịp câu ngắn"),
+            ("rhetorical_question_ratio", "rhetorical question rhythm", "Câu hỏi tu từ"),
+            ("parenthetical_aside_ratio", "parenthetical aside rhythm", "Nhịp câu trong ngoặc"),
         ]:
             target_value = float(target_patterns.get(key) or 0)
             actual_value = float(content_metrics.get(key) or 0)
             diff = abs(actual_value - target_value)
-            score -= min(8, round(diff * 40))
+            deduct(
+                criterion,
+                min(8, round(diff * 40)),
+                f"Tỷ lệ thực tế {actual_value:.3f} khác mức mẫu {target_value:.3f}.",
+                f"Điều chỉnh {label} gần hơn với writing samples.",
+            )
             if target_value >= 0.05 and actual_value < target_value / 2:
                 recommendations.append(f"Use more {label} to match the source style.")
 
         target_dash = float(target_patterns.get("dash_usage_per_1000_words") or 0)
         actual_dash = float(content_metrics.get("dash_usage_per_1000_words") or 0)
         dash_diff = abs(actual_dash - target_dash)
-        score -= min(6, round(dash_diff))
+        deduct(
+            "Mật độ dấu gạch ngang",
+            min(6, round(dash_diff)),
+            f"Mật độ dấu gạch ngang lệch {dash_diff:.1f} lần trên 1.000 từ.",
+            "Điều chỉnh cách dùng dấu gạch ngang theo nhịp văn mẫu.",
+        )
 
         target_active = float(target_patterns.get("active_voice_ratio") or 0)
         actual_active = float(content_metrics.get("active_voice_ratio") or 0)
         if target_active and actual_active + 0.15 < target_active:
-            score -= 10
+            deduct(
+                "Tỷ lệ câu chủ động",
+                10,
+                f"Tỷ lệ câu chủ động {actual_active:.2f} thấp hơn mức mẫu {target_active:.2f}.",
+                "Ưu tiên cấu trúc câu chủ động để sát fingerprint hơn.",
+            )
             recommendations.append("Prefer active voice to match the learned sentence pattern.")
 
         transition_phrases = [
@@ -1133,7 +1193,12 @@ class BrandVoiceService:
             if isinstance(phrase, str) and phrase.strip()
         ]
         if transition_phrases and not any(phrase.lower() in lowered for phrase in transition_phrases):
-            score -= 8
+            deduct(
+                "Cụm chuyển ý đặc trưng",
+                8,
+                "Bài viết chưa sử dụng cụm chuyển ý đã học từ writing samples.",
+                "Dùng một cụm chuyển ý phù hợp với ngữ cảnh, tránh chèn máy móc.",
+            )
             recommendations.append("Reuse learned transition phrases where they fit naturally.")
 
         forbidden_cliches = [
@@ -1142,7 +1207,12 @@ class BrandVoiceService:
         ]
         cliche_hits = sorted({phrase for phrase in forbidden_cliches if phrase.lower() in lowered})
         if cliche_hits:
-            score -= min(30, len(cliche_hits) * 10)
+            deduct(
+                "Sáo ngữ bị cấm",
+                min(30, len(cliche_hits) * 10),
+                f"Phát hiện sáo ngữ: {', '.join(cliche_hits)}.",
+                "Viết lại các cụm sáo ngữ bằng cách diễn đạt cụ thể và đúng brand voice.",
+            )
             violations.append(f"Writing fingerprint cliches found: {', '.join(cliche_hits)}")
 
         for key, label in [
@@ -1157,10 +1227,20 @@ class BrandVoiceService:
                 and expected not in ("unspecified", "reader")
                 and not self._perspective_matches(key, expected, actual)
             ):
-                score -= 8
+                deduct(
+                    {
+                        "self_reference": "Cách thương hiệu tự xưng",
+                        "reader_address": "Cách xưng hô với người đọc",
+                        "stance": "Lập trường người viết",
+                    }[key],
+                    8,
+                    f"Mẫu yêu cầu '{expected}' nhưng bài hiện thể hiện '{actual}'.",
+                    f"Điều chỉnh {label} theo perspective đã học.",
+                )
                 recommendations.append(f"Match the learned {label}: expected '{expected}', saw '{actual}'.")
 
-        return max(0, min(100, score)), violations, recommendations
+        result = (max(0, min(100, score)), violations, recommendations)
+        return (*result, breakdown) if include_breakdown else result
 
     def _select_persona(
         self,

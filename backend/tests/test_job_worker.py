@@ -149,6 +149,11 @@ async def test_worker_processes_plan_and_generation_jobs(tmp_path):
     assert generated["quality_report"]["passed"] is True
     assert generated["rewrite_count"] == 0
     assert generated["quality_report"]["final_evaluation"]["summary"] == "Final explanation"
+    assert generated["quality_report"]["score_breakdown"]["brand"] == [
+        {"criterion": "Tone thương hiệu", "score": 90},
+        {"criterion": "Từ vựng thương hiệu", "score": 88},
+        {"criterion": "Nhận diện thương hiệu", "score": 86},
+    ]
     assert "grounding_coverage" not in generated["quality_report"]
     assert "grounding_status" not in generated["quality_report"]
     assert generated["citations"][0]["document_id"] == "doc-k1"

@@ -16,19 +16,9 @@ export class ApiError extends Error {
   }
 }
 
-function token() {
-  if (typeof window === "undefined") return "";
-  return window.localStorage.getItem("contentos_token") ?? "";
-}
-
-export function setAccessToken(value: string) {
-  window.localStorage.setItem("contentos_token", value.trim());
-}
-
 export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers);
   if (!(init.body instanceof FormData)) headers.set("Content-Type", "application/json");
-  if (token()) headers.set("Authorization", `Bearer ${token()}`);
   const response = await fetch(`${API_BASE}${path}`, { ...init, headers, cache: "no-store" });
   if (!response.ok) {
     const payload = await response.json().catch(() => ({}));
