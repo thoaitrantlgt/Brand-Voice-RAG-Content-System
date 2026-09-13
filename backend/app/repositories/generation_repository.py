@@ -119,16 +119,29 @@ class GenerationRunRepository:
         return self.get(run_id)  # type: ignore[return-value]
 
     def set_plan(
-        self, run_id: str, title: str, seo_title: str, outline: list[str]
+        self,
+        run_id: str,
+        title: str,
+        seo_title: str,
+        outline: list[str],
+        seo_research: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
+        preliminary_report = {"seo_research": seo_research} if seo_research else {}
         with get_connection(self.db_path) as conn:
             cursor = conn.execute(
                 """
                 UPDATE generation_runs SET planned_title = ?, planned_seo_title = ?,
-                    outline_json = ?, status = 'outline_ready', updated_at = CURRENT_TIMESTAMP
+                    outline_json = ?, quality_report_json = ?, status = 'outline_ready',
+                    updated_at = CURRENT_TIMESTAMP
                 WHERE run_id = ? AND status = 'planning'
                 """,
-                (title, seo_title, json.dumps(outline, ensure_ascii=False), run_id),
+                (
+                    title,
+                    seo_title,
+                    json.dumps(outline, ensure_ascii=False),
+                    json.dumps(preliminary_report, ensure_ascii=False),
+                    run_id,
+                ),
             )
             if cursor.rowcount != 1:
                 raise ValueError("Run is not accepting a plan")

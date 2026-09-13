@@ -10,6 +10,7 @@ export type FinalDimension = {
   score: number | null;
   threshold?: number | null;
   gated?: boolean;
+  included_in_overall?: boolean;
   passed?: boolean | null;
   status?: "evaluated" | "not_applicable" | "unavailable" | "disabled" | "error";
   reason: string;
@@ -60,6 +61,7 @@ const metricLabels: Record<string, string> = {
   style: "Style",
   fingerprint: "Fingerprint",
   persona: "Persona",
+  seo: "SEO Readiness",
 };
 
 function allocatePoints(weights: number[], total: number) {
@@ -142,7 +144,7 @@ export function HighlightedBlog({ content, evaluation }: { content: string; eval
   const perfectMetrics = new Set(
     evaluation?.dimensions.filter((item) => item.score === 100).map((item) => item.metric) ?? [],
   );
-  const annotations = evaluation?.status === "evaluated" ? evaluation.annotations.filter((item) => item.metric !== "grounding" && !perfectMetrics.has(item.metric)) : [];
+  const annotations = evaluation?.annotations.filter((item) => item.metric !== "grounding" && !perfectMetrics.has(item.metric)) ?? [];
   const components: Components = {
     p: ({ children }) => <p>{highlightedChildren(children, annotations)}</p>,
     li: ({ children }) => <li>{highlightedChildren(children, annotations)}</li>,
@@ -163,10 +165,10 @@ export function FinalEvaluationPanel({ evaluation, scoreBreakdown }: { evaluatio
   }
 
   const hadLegacyGrounding = evaluation.dimensions.some((item) => item.metric === "grounding");
-  const dimensions = evaluation.dimensions.filter((item) => item.metric !== "grounding");
+  const dimensions = evaluation.dimensions.filter((item) => item.metric !== "grounding" && item.metric !== "seo");
   const perfectMetrics = new Set(dimensions.filter((item) => item.score === 100).map((item) => item.metric));
   const annotations = evaluation.annotations.filter((item) => item.metric !== "grounding" && !perfectMetrics.has(item.metric));
-  const numericScores = dimensions.flatMap((item) => typeof item.score === "number" ? [item.score] : []);
+  const numericScores = dimensions.flatMap((item) => typeof item.score === "number" && item.included_in_overall !== false ? [item.score] : []);
   const overallScore = hadLegacyGrounding && numericScores.length > 0
     ? Math.round(numericScores.reduce((total, score) => total + score, 0) / numericScores.length)
     : evaluation.overall_score;

@@ -8,12 +8,16 @@ from app.repositories.brand_voice_profile_repository import BrandVoiceProfileRep
 from app.repositories.generation_repository import GenerationRunRepository
 from app.repositories.job_repository import JobRepository
 from app.workers.job_worker import JobWorker, WorkflowJobHandlers
+from app.services.seo_evaluation_service import SeoEvaluationService
 from app.workers.profile_trainer import ProjectProfileTrainer
-from worker import recover_interrupted_jobs
+from worker import build_seo_llm, recover_interrupted_jobs
 
 
 class FakeContentService:
-    async def generate_titles(self, keywords, use_web_search=False, project_id="default"):
+    def __init__(self):
+        self.last_generate_kwargs = None
+
+    async def generate_titles(self, keywords, use_web_search=False, project_id="default", seo_context=""):
         return {
             "titles": [
                 {
@@ -21,13 +25,28 @@ class FakeContentService:
                     "seo_title": "Safe breath support guide",
                     "outline": ["## Why it matters", "## Practice"],
                 }
-            ]
+            ],
+            "seo_research": {
+                "query_variations": ["breath support basics"],
+                "sources": [
+                    {
+                        "query": "breath support basics",
+                        "title": "Planner source",
+                        "url": "https://example.com/planner-source",
+                        "snippet": "Planning evidence",
+                        "domain": "example.com",
+                    }
+                ],
+                "source_urls": ["https://example.com/planner-source"],
+            },
         }
 
     async def generate_content(self, **kwargs):
+        self.last_generate_kwargs = kwargs
         return {
             "optimized_content": "# Safe breath support\n\n## Why it matters\n\nClear body.",
             "title_tag": "Safe breath support",
+            "seo_title": "Safe breath support",
             "meta_description": "A practical guide.",
             "style_report": {
                 "style_score": 95,
@@ -50,6 +69,11 @@ class FakeContentService:
                     "relevance_score": 0.9,
                 }
             ],
+            "seo_research": {
+                "query_variations": ["safe breath support"],
+                "sources": [{"url": "https://example.com/source", "title": "Source", "snippet": "Evidence", "domain": "example.com", "query": "safe breath support"}],
+                "source_urls": ["https://example.com/source"],
+            },
         }
 
 
@@ -112,6 +136,7 @@ async def test_worker_processes_plan_and_generation_jobs(tmp_path):
             "audience": "students",
             "objective": "teach",
             "use_web_search": False,
+            "seo_research_enabled": True,
         },
         "An",
         profile["profile_id"],
@@ -120,12 +145,14 @@ async def test_worker_processes_plan_and_generation_jobs(tmp_path):
     plan_job = jobs.enqueue(
         "alpha", "plan", {"run_id": run["run_id"]}, "An", idempotency_key="plan:run"
     )
+    content_service = FakeContentService()
     handlers = WorkflowJobHandlers(
-        FakeContentService(),
+        content_service,
         runs,
         profiles,
         brand_voice_service=FakeBrandVoiceService(),
         final_evaluator=FakeFinalEvaluator(),
+        seo_evaluator=SeoEvaluationService(),
     )
     worker = JobWorker(jobs, handlers.handle)
 
@@ -134,6 +161,9 @@ async def test_worker_processes_plan_and_generation_jobs(tmp_path):
     assert jobs.get(plan_job["job_id"])["status"] == "succeeded"
     assert planned["status"] == "outline_ready"
     assert planned["planned_title"] == "Safe breath support"
+    assert planned["quality_report"]["seo_research"]["source_urls"] == [
+        "https://example.com/planner-source"
+    ]
 
     generation_job = jobs.enqueue(
         "alpha",
@@ -156,8 +186,27 @@ async def test_worker_processes_plan_and_generation_jobs(tmp_path):
     ]
     assert "grounding_coverage" not in generated["quality_report"]
     assert "grounding_status" not in generated["quality_report"]
+    assert generated["quality_report"]["dimension_scores"]["seo"] >= 0
+    assert generated["quality_report"]["seo_evaluation"]["gated"] is False
+    assert generated["quality_report"]["seo_evaluation"]["seo_package"]["seo_title"] == "Safe breath support"
+    assert content_service.last_generate_kwargs["use_web_search"] is True
+    assert generated["quality_report"]["seo_research"]["source_urls"] == [
+        "https://example.com/planner-source",
+        "https://example.com/source",
+    ]
     assert generated["citations"][0]["document_id"] == "doc-k1"
     assert generated["retrieval_contexts"][0]["text"].startswith("Full retrieved")
+
+
+def test_optional_seo_judge_init_failure_does_not_stop_worker(monkeypatch):
+    from app.core.config import Settings
+
+    def broken_factory(settings):
+        raise ValueError("judge base URL is missing")
+
+    monkeypatch.setattr("worker.create_seo_judge", broken_factory)
+
+    assert build_seo_llm(Settings(SEO_LLM_JUDGE_ENABLED=True)) is None
 
 
 @pytest.mark.asyncio

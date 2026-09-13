@@ -95,6 +95,23 @@ Truncated.
     assert "Truncated." not in result
 
 
+def test_build_seo_package_uses_article_content_instead_of_generic_fallback():
+    content = """# Cách giữ hơi khi hát
+
+Người mới có thể nhận biết nguyên nhân hụt hơi và luyện luồng hơi đều bằng các bước ngắn, an toàn trong bài viết này.
+"""
+    package = ContentService.build_seo_package(
+        content,
+        seo_title="Cách giữ hơi khi hát",
+        primary_keyword="giữ hơi khi hát",
+        search_intent="informational",
+    )
+
+    assert package["meta_description"].startswith("Người mới")
+    assert "Blog post about" not in package["meta_description"]
+    assert package["suggested_slug"] == "cach-giu-hoi-khi-hat"
+
+
 def test_brand_profile_replaces_generic_corporate_vocabulary(tmp_path):
     profile_path = tmp_path / "profile.json"
     profile_path.write_text(

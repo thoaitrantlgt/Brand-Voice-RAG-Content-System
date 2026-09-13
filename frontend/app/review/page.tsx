@@ -6,14 +6,17 @@ import { Check, Loader2, RefreshCw, Send, X } from "lucide-react";
 import { api } from "../lib/api";
 import { useProject } from "../components/ProjectContext";
 import { FinalEvaluation, FinalEvaluationPanel, HighlightedBlog, ScoreBreakdown } from "../components/FinalEvaluation";
+import { SeoEvaluation, SeoEvaluationPanel, SeoResearch } from "../components/SeoEvaluation";
 
 type RunSummary = { run_id: string; planned_title?: string | null; status: string; created_at: string; quality_report: { passed?: boolean } };
 type RunDetail = RunSummary & {
   final_content?: string | null;
   edited_content?: string | null;
   human_score?: number | null;
+  planned_seo_title?: string | null;
+  meta_description?: string | null;
   review_notes?: string | null;
-  quality_report: { passed?: boolean; dimension_scores?: Record<string, number>; violations?: { code: string }[]; final_evaluation?: FinalEvaluation; score_breakdown?: ScoreBreakdown };
+  quality_report: { passed?: boolean; dimension_scores?: Record<string, number>; violations?: { code: string }[]; final_evaluation?: FinalEvaluation; score_breakdown?: ScoreBreakdown; seo_evaluation?: SeoEvaluation; seo_research?: SeoResearch };
   citations: { document_id: string; excerpt: string; relevance_score?: number }[];
   blog_id?: number | null;
 };
@@ -107,6 +110,7 @@ function ReviewWorkspace() {
           {selected && <div className="space-y-6">
             <section><h3 className="mb-3 text-sm font-semibold">Quality</h3>{Object.entries(selected.quality_report.dimension_scores ?? {}).map(([key, value]) => <div key={key} className="mb-2 flex justify-between text-xs"><span className="text-slate-500">{key}</span><strong>{value}</strong></div>)}{(selected.quality_report.violations ?? []).filter((item) => item.code !== "grounding_below_threshold").map((item) => <div key={item.code} className="mb-1 rounded bg-amber-50 px-2 py-1 text-xs text-amber-800">{item.code}</div>)}</section>
             <section><h3 className="mb-3 text-sm font-semibold">Lý do chấm điểm</h3><FinalEvaluationPanel evaluation={selected.quality_report.final_evaluation} scoreBreakdown={selected.quality_report.score_breakdown} /></section>
+            <section><SeoEvaluationPanel evaluation={selected.quality_report.seo_evaluation} seoTitle={selected.planned_seo_title} metaDescription={selected.meta_description} modelReason={selected.quality_report.final_evaluation?.dimensions.find((item) => item.metric === "seo")?.reason} research={selected.quality_report.seo_research} /></section>
             <section><h3 className="mb-3 text-sm font-semibold">Human review</h3><label className="text-xs text-slate-500">Score<input className="input mt-1" type="number" min={0} max={100} value={score} onChange={(event) => setScore(Number(event.target.value))} /></label><label className="mt-3 block text-xs text-slate-500">Notes<textarea className="input mt-1 min-h-24 resize-y" value={notes} onChange={(event) => setNotes(event.target.value)} /></label></section>
             <section><h3 className="mb-3 text-sm font-semibold">Sources</h3><div className="space-y-3">{selected.citations.map((item) => <div key={`${item.document_id}-${item.excerpt}`} className="text-xs"><strong>{item.document_id}</strong><p className="mt-1 line-clamp-3 text-slate-500">{item.excerpt}</p></div>)}</div></section>
             {selected.status === "needs_review" && <div className="grid grid-cols-2 gap-2"><button className="btn btn-secondary text-rose-700" disabled={busy} onClick={() => void review(false)}><X size={16} /> Reject</button><button className="btn btn-primary" disabled={busy} onClick={() => void review(true)}><Check size={16} /> Approve</button></div>}

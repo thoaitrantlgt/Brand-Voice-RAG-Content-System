@@ -198,6 +198,8 @@ class ContentCrew(ICrew):
             if tracking_tool and tracking_tool.collected_links:
                 result_dict["search_links"] = tracking_tool.collected_links
                 logger.info("Collected {} search links", len(tracking_tool.collected_links))
+            if tracking_tool:
+                result_dict["seo_research"] = tracking_tool.research_report()
 
             return result_dict
 

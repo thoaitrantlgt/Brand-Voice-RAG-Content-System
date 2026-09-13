@@ -6,11 +6,14 @@ import { AlertCircle, ArrowLeft, CheckCircle2, FileCheck2, Loader2, PenLine, Sea
 import { api, Job, waitForJob } from "../lib/api";
 import { useProject } from "../components/ProjectContext";
 import { FinalEvaluation, FinalEvaluationPanel, HighlightedBlog, ScoreBreakdown } from "../components/FinalEvaluation";
+import { SeoEvaluation, SeoEvaluationPanel, SeoResearch } from "../components/SeoEvaluation";
 
 type Run = {
   run_id: string;
   status: string;
   planned_title?: string | null;
+  planned_seo_title?: string | null;
+  meta_description?: string | null;
   outline: string[];
   final_content?: string | null;
   quality_report: {
@@ -19,6 +22,8 @@ type Run = {
     violations?: { code: string; actual?: number; threshold?: number }[];
     final_evaluation?: FinalEvaluation;
     score_breakdown?: ScoreBreakdown;
+    seo_evaluation?: SeoEvaluation;
+    seo_research?: SeoResearch;
   };
   citations: { document_id: string; source_url?: string | null; excerpt: string; relevance_score?: number }[];
   rewrite_count: number;
@@ -33,6 +38,9 @@ type Brief = {
   mustCover: string;
   mustAvoid: string;
   targetLength: number;
+  primaryKeyword: string;
+  searchIntent: "auto" | "informational" | "commercial" | "navigational" | "transactional";
+  seoResearch: boolean;
 };
 
 type BriefPreset = {
@@ -54,6 +62,9 @@ const DEMO_BRIEF: Brief = {
   mustCover: "dấu hiệu hụt hơi, bài tập kiểm soát luồng hơi",
   mustAvoid: "cam kết kết quả tuyệt đối, thuật ngữ quá hàn lâm",
   targetLength: 800,
+  primaryKeyword: "kiểm soát hơi",
+  searchIntent: "informational",
+  seoResearch: false,
 };
 
 const BRIEF_PRESETS: BriefPreset[] = [
@@ -129,6 +140,11 @@ function parseStoredBrief(raw: string | null): Brief | null {
       targetLength: typeof storedLength === "number" && Number.isInteger(storedLength) && storedLength >= 300 && storedLength <= 3000
         ? storedLength
         : DEMO_BRIEF.targetLength,
+      primaryKeyword: typeof candidate.primaryKeyword === "string" ? candidate.primaryKeyword : DEMO_BRIEF.primaryKeyword,
+      searchIntent: ["auto", "informational", "commercial", "navigational", "transactional"].includes(String(candidate.searchIntent))
+        ? candidate.searchIntent as Brief["searchIntent"]
+        : DEMO_BRIEF.searchIntent,
+      seoResearch: typeof candidate.seoResearch === "boolean" ? candidate.seoResearch : false,
     };
   } catch {
     return null;
@@ -200,6 +216,9 @@ export default function CreatePage() {
           must_cover: list(brief.mustCover),
           must_avoid: list(brief.mustAvoid),
           target_length: brief.targetLength,
+          primary_keyword: brief.primaryKeyword || list(brief.keywords)[0],
+          search_intent: brief.searchIntent,
+          seo_research_enabled: brief.seoResearch,
         }),
       });
       await waitForJob(created.job.job_id);
@@ -279,6 +298,12 @@ export default function CreatePage() {
           <div className="grid gap-4 md:grid-cols-2">
             <Field label="Chủ đề" value={brief.topic} onChange={(value) => setBrief({ ...brief, topic: value })} />
             <Field label="Từ khóa" value={brief.keywords} onChange={(value) => setBrief({ ...brief, keywords: value })} />
+            <Field label="Từ khóa chính" value={brief.primaryKeyword} onChange={(value) => setBrief({ ...brief, primaryKeyword: value })} />
+            <label className="text-sm font-medium text-slate-700">Search intent
+              <select className="input mt-2" value={brief.searchIntent} onChange={(event) => setBrief({ ...brief, searchIntent: event.target.value as Brief["searchIntent"] })}>
+                <option value="auto">Tự suy luận</option><option value="informational">Tìm hiểu</option><option value="commercial">So sánh giải pháp</option><option value="transactional">Thực hiện giao dịch</option><option value="navigational">Tìm trang cụ thể</option>
+              </select>
+            </label>
             <Field label="Đối tượng đọc" value={brief.audience} onChange={(value) => setBrief({ ...brief, audience: value })} />
             <Field label="Mục tiêu bài viết" value={brief.objective} onChange={(value) => setBrief({ ...brief, objective: value })} />
             <Field label="Category" value={brief.category} onChange={(value) => setBrief({ ...brief, category: value })} />
@@ -286,6 +311,7 @@ export default function CreatePage() {
               <input className="input mt-2" type="number" min={300} max={3000} value={brief.targetLength} onChange={(event) => setBrief({ ...brief, targetLength: Number(event.target.value) })} />
             </label>
           </div>
+          <label className="flex items-center gap-2 text-sm text-slate-700"><input type="checkbox" checked={brief.seoResearch} onChange={(event) => setBrief({ ...brief, seoResearch: event.target.checked })} /> Nghiên cứu web khi lập outline SEO</label>
           <div className="grid gap-4 md:grid-cols-2">
             <Field label="Nội dung bắt buộc" multiline value={brief.mustCover} onChange={(value) => setBrief({ ...brief, mustCover: value })} />
             <Field label="Nội dung cần tránh" multiline value={brief.mustAvoid} onChange={(value) => setBrief({ ...brief, mustAvoid: value })} />
@@ -317,6 +343,9 @@ export default function CreatePage() {
               </div>
               <p className="mt-3 text-xs text-slate-500">Rewrite: {run.rewrite_count}/2</p>
               {(run.quality_report.violations ?? []).filter((item) => item.code !== "grounding_below_threshold").map((item) => <div key={item.code} className="mt-2 rounded bg-amber-50 px-2 py-1 text-xs text-amber-800">{item.code}</div>)}
+            </section>
+            <section className="rounded-md border border-slate-200 bg-white p-4">
+              <SeoEvaluationPanel evaluation={run.quality_report.seo_evaluation} seoTitle={run.planned_seo_title} metaDescription={run.meta_description} modelReason={run.quality_report.final_evaluation?.dimensions.find((item) => item.metric === "seo")?.reason} research={run.quality_report.seo_research} />
             </section>
             <section className="rounded-md border border-slate-200 bg-white p-4">
               <h3 className="mb-3 font-semibold">Lý do chấm điểm</h3>

@@ -29,12 +29,19 @@ flowchart LR
     E --> F
     F --> G[Editable outline]
     G --> H[Writer and Editor job]
-    H --> I[Quality gate and up to 2 rewrites]
-    I --> J[Human review]
+    H --> I[Quality gate and SEO readiness]
+    I --> L[Up to 2 targeted rewrites]
+    L --> J[Human review]
     J --> K[Publish]
 ```
 
 Planning, generation, and profile training are asynchronous. The API persists jobs in SQLite; `backend/worker.py` processes them and supports retry and crash recovery.
+
+Every terminal draft includes Brand, Style, Fingerprint, Persona, and Content SEO Readiness V2 details. SEO V2 checks intent satisfaction, helpful completeness, information gain, evidence and trust, title/snippet accuracy, semantic topic coverage, and scannability. It is informational by default, excluded from the overall score, and does not claim to predict search ranking. Optional web research records the query, title, URL, snippet, and domain used by the writing pipeline.
+
+Run the deterministic 25-case SEO smoke benchmark from `backend/` with `.\.venv\Scripts\python.exe scripts\run_seo_benchmark.py`. Human-score correlation remains pending until two reviewers score the fixture independently.
+
+See [Content SEO Readiness V2](docs/plans/2026-08-23-content-seo-v2.md) for metric definitions, research sources, LM Studio judge configuration, calibration requirements, and the separate post-publish technical SEO phase.
 
 ## Product Surface
 

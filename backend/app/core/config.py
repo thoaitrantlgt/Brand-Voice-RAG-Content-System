@@ -74,6 +74,20 @@ class Settings(BaseSettings):
     FINAL_JUDGE_API_BASE: str | None = None
     FINAL_JUDGE_API_KEY: str = ""
 
+    # === SEO Readiness Evaluation ===
+    SEO_EVALUATION_ENABLED: bool = True
+    SEO_LLM_JUDGE_ENABLED: bool = False
+    SEO_LLM_JUDGE_PROVIDER: AIProvider = AIProvider.OPENAI
+    SEO_LLM_JUDGE_MODEL: str = "qwen3.5-2b"
+    SEO_LLM_JUDGE_API_BASE: str | None = None
+    SEO_LLM_JUDGE_API_KEY: str = ""
+    SEO_GATE_ENABLED: bool = False
+    SEO_GATE_THRESHOLD: int = 75
+    SEO_RESEARCH_ENABLED: bool = False
+    SEO_RESEARCH_TOP_K: int = 5
+    SEO_DUPLICATE_TITLE_CHECK: bool = True
+    SEO_DUPLICATE_META_CHECK: bool = True
+
     # === Local Inference ===
     VLLM_BASE_URL: str = "http://127.0.0.1:8001/v1"
     VLLM_API_KEY: str = "local-vllm"

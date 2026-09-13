@@ -1,0 +1,2 @@
+rank-llm[openai] @ git+https://github.com/castorini/rank_llm.git@443adf3306102f11b85945d2a277fb6aa10ea0aa
+trafilatura==2.2.0

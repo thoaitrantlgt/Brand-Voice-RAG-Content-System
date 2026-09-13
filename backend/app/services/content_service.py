@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import json
 import re
+import unicodedata
 from typing import Any
 
 from app.agents.llm_factory import LLMFactory
@@ -51,6 +52,7 @@ class ContentService:
         keywords: list[str],
         use_web_search: bool = False,
         project_id: str = "default",
+        seo_context: str = "",
     ) -> dict[str, Any]:
         """Run Planner Agent to create one editable draft outline."""
         logger.info("Generating draft plan | keywords={} web_search={}", keywords, use_web_search)
@@ -62,6 +64,7 @@ class ContentService:
                     "keywords": ", ".join(keywords),
                     "use_web_search": use_web_search,
                     "project_id": project_id,
+                    "seo_context": seo_context,
                 },
             )
             raw_output = result.get("raw_output", "")
@@ -221,9 +224,14 @@ class ContentService:
                 except ContentGenerationError as exc:
                     logger.warning("Targeted forbidden-term repair failed: {}", exc)
 
+            seo_package = self.build_seo_package(
+                optimized_content,
+                seo_title=title_tag,
+                primary_keyword=keywords[0] if keywords else "",
+            )
             parsed_data = {
                 "title_tag": title_tag,
-                "meta_description": f"Blog post about {', '.join(keywords[:2])}",
+                **seo_package,
                 "optimized_content": optimized_content,
                 "style_report": style_report,
             }
@@ -240,6 +248,60 @@ class ContentService:
                 f"Cannot generate blog content: {e}",
                 {"title": selected_title},
             ) from e
+
+    @classmethod
+    def build_seo_package(
+        cls,
+        content: str,
+        *,
+        seo_title: str,
+        primary_keyword: str = "",
+        search_intent: str = "auto",
+    ) -> dict[str, str]:
+        h1_match = re.search(r"(?m)^#\s+(.+?)\s*$", content)
+        final_title = seo_title.strip() or (h1_match.group(1).strip() if h1_match else "")
+        return {
+            "seo_title": final_title,
+            "meta_description": cls._build_meta_description(content, final_title),
+            "suggested_slug": cls._suggest_slug(final_title),
+            "primary_keyword": primary_keyword,
+            "search_intent": search_intent,
+        }
+
+    @classmethod
+    def _build_meta_description(cls, content: str, title: str) -> str:
+        """Build a truthful draft snippet from the article, without keyword stuffing."""
+        blocks = [block.strip() for block in re.split(r"\n\s*\n", content) if block.strip()]
+        paragraphs = [
+            cls._strip_markdown(block)
+            for block in blocks
+            if not block.startswith("#") and not re.match(r"^[-*]\s", block)
+        ]
+        source = next((item for item in paragraphs if len(item) >= 60), "")
+        if not source:
+            source = next((item for item in paragraphs if item), title)
+        source = re.sub(r"\s+", " ", source).strip()
+        if len(source) <= 180:
+            return source
+        clipped = source[:181]
+        sentence_end = max(clipped.rfind(". "), clipped.rfind("! "), clipped.rfind("? "))
+        if sentence_end >= 90:
+            return clipped[: sentence_end + 1].strip()
+        word_end = clipped.rfind(" ")
+        return clipped[:word_end].rstrip(" ,;:-") + "…"
+
+    @staticmethod
+    def _strip_markdown(value: str) -> str:
+        value = re.sub(r"!?\[([^]]+)]\([^)]+\)", r"\1", value)
+        return re.sub(r"[`*_>|~]", "", value).strip()
+
+    @staticmethod
+    def _suggest_slug(title: str) -> str:
+        normalized = unicodedata.normalize("NFD", title.casefold())
+        ascii_like = "".join(
+            char for char in normalized if unicodedata.category(char) != "Mn"
+        )
+        return re.sub(r"^-+|-+$", "", re.sub(r"[^a-z0-9]+", "-", ascii_like))[:90]
 
     @staticmethod
     def _extract_single_article(raw_output: str) -> str:

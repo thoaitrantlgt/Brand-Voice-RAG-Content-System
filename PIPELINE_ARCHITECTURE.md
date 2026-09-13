@@ -1,6 +1,6 @@
 # AI Content OS - Pipeline, Workflow, Architecture and Evaluation
 
-> Phiên bản tài liệu: 2026-08-09
+> Phiên bản tài liệu: 2026-08-15
 > Phạm vi: implementation hiện tại trong `backend/`, `frontend/` và các script evaluation.
 > Mục tiêu: mô tả chính xác hệ thống đang chạy, cách dữ liệu đi qua pipeline, cách tính từng metric và điều kiện để một bài được publish.
 
@@ -697,6 +697,64 @@ relevance_score = 1 - Chroma cosine distance
 ```
 
 Không có hard relevance threshold trong runtime generation. Context được lấy theo top-k trong project/cluster filter.
+
+### 8.6 Content SEO Readiness V2
+
+Content SEO Readiness đánh giá chất lượng nội dung và các tín hiệu on-page mà hệ thống kiểm soát được trước khi publish. Metric này không dự đoán thứ hạng Google. V2 mặc định `gated=false` và `included_in_overall=false`, vì vậy điểm SEO thấp không làm thay đổi kết quả hard gate Brand Voice.
+
+```text
+Content SEO Readiness V2 =
+  20% Search intent satisfaction
++ 20% Helpful completeness
++ 15% Information gain and originality
++ 15% Evidence, expertise and trust
++ 10% Title and snippet accuracy
++ 10% Semantic topic coverage
++ 10% Structure and scannability
+```
+
+| Subscore | Dữ liệu đánh giá |
+| --- | --- |
+| Search intent satisfaction | Topic, audience, objective, intent, H1, intro và nội dung |
+| Helpful completeness | Objective, `must_cover`, topic coverage và section coverage |
+| Information gain and originality | Ví dụ, số liệu, chi tiết quy trình, trải nghiệm và so sánh cụ thể |
+| Evidence, expertise and trust | Nguồn, attribution, giới hạn, lưu ý an toàn và tín hiệu kinh nghiệm |
+| Title and snippet accuracy | SEO title, H1, meta description, lời hứa nội dung và project duplicates |
+| Semantic topic coverage | Keyword, topic, objective và `must_cover`, không yêu cầu exact match |
+| Structure and scannability | Một H1, đủ H2, heading hierarchy và đoạn văn có thể quét nhanh |
+
+Không dùng keyword density mục tiêu, giới hạn title 60 ký tự hay meta 160 ký tự như hard rule. Độ dài snippet chỉ tạo advisory vì snippet thực tế phụ thuộc truy vấn và có thể được search engine viết lại.
+
+Điểm gốc vẫn theo weighted formula. Sau đó critical caps làm cho score phản ánh đúng lỗi nghiêm trọng: thiếu SEO title, H1 không hợp lệ, title lệch nội dung hoặc keyword stuffing cap ở `64`; meta description thiếu/chung chung cap ở `74`. Report lưu cả `weighted_score` và score sau cap để audit.
+
+Runtime output:
+
+```text
+quality_report.dimension_scores.seo
+quality_report.seo_evaluation.subscores
+quality_report.seo_evaluation.checks
+quality_report.seo_evaluation.field_issues
+quality_report.seo_evaluation.annotations
+quality_report.seo_research
+```
+
+`field_issues` dành cho SEO title và meta description vì hai trường này không nằm trong Markdown body. `annotations` chỉ chứa exact quote trong body và được final evaluator xác minh vị trí trước khi frontend tô màu.
+
+Title và meta được so trùng với các blog đã publish trong cùng project. `seo_package` lưu SEO title, meta description, suggested slug, primary keyword và search intent trong quality report. Sau targeted rewrite, meta description được tạo lại từ final content.
+
+Năm subscore mang tính ngữ nghĩa có thể được blend với optional LLM judge qua `SEO_LLM_JUDGE_ENABLED=true`: intent, completeness, information gain, evidence/trust và semantic coverage. Title, snippet, duplicate, keyword stuffing và structure vẫn do deterministic checks quyết định. Judge có provider/model/API base riêng, vì vậy có thể dùng LM Studio mà không đổi provider của Planner/Writer. Lỗi judge fallback về deterministic score.
+
+Khi `seo_research_enabled=true`, Planner và Writer được phép dùng web search. Report lưu `query_variations`, `sources` gồm query/title/URL/snippet/domain và danh sách `source_urls` đã deduplicate. Provenance này được hiển thị trong Create/Review; nó không phải citation tự động cho mọi claim.
+
+Benchmark cố định nằm tại `backend/evaluation/seo_v1_cases.json` và chạy bằng:
+
+```powershell
+.\.venv\Scripts\python.exe scripts\run_seo_benchmark.py
+```
+
+Fixture có 25 case và issue labels. Báo cáo chỉ tính Spearman và MAE sau khi mọi case có ít nhất hai human review với `reviewer_id` khác nhau; không suy diễn human score từ expected labels và không công bố thống kê từ tập review chưa hoàn tất.
+
+Technical SEO chưa thuộc Content SEO V2 vì ứng dụng hiện là workspace nội bộ, chưa có public article route crawlable. Canonical, sitemap, robots, Article JSON-LD, Core Web Vitals và Search Console feedback chỉ có ý nghĩa sau khi có publication surface công khai. Chi tiết metric và nguồn nghiên cứu nằm tại `docs/plans/2026-08-23-content-seo-v2.md`.
 
 ## 9. Offline evaluation architecture
 

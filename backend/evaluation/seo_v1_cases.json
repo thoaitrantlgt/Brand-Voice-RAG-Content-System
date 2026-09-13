@@ -1,0 +1,142 @@
+{
+  "version": "seo-v1-2026-08-15",
+  "review_protocol": "Each case requires two independent human reviews before correlation is reported.",
+  "cases": [
+    {
+      "case_id": "seo-01-good-howto",
+      "brief": {"topic": "Cách giữ hơi khi hát cho người mới", "keywords": ["giữ hơi khi hát"], "primary_keyword": "giữ hơi khi hát", "search_intent": "informational", "audience": "Người mới học hát", "objective": "Hướng dẫn luyện hơi an toàn", "must_cover": ["dấu hiệu hụt hơi", "bài tập luồng hơi"]},
+      "seo_title": "Cách giữ hơi khi hát cho người mới", "meta_description": "Nhận biết dấu hiệu hụt hơi và thực hành bài tập luồng hơi an toàn, dễ theo dõi cho người mới học hát.",
+      "content": "# Cách giữ hơi khi hát cho người mới\n\nGiữ hơi khi hát bắt đầu từ việc nhận biết lúc luồng hơi mất ổn định. Hướng dẫn này giúp bạn luyện từng bước an toàn.\n\n## Dấu hiệu hụt hơi\n\nBạn thường hết hơi giữa câu hoặc căng cổ ở cuối câu.\n\n## Bài tập luồng hơi\n\nHít nhẹ, phát âm xì đều trong thời gian thoải mái và dừng khi chóng mặt.\n\n## Theo dõi tiến bộ\n\nGhi lại cảm giác và độ ổn định sau mỗi buổi tập.",
+      "expected_labels": [], "human_reviews": []
+    },
+    {
+      "case_id": "seo-02-good-checklist",
+      "brief": {"topic": "Checklist luyện thanh trước khi hát", "keywords": ["checklist luyện thanh"], "primary_keyword": "checklist luyện thanh", "search_intent": "informational", "audience": "Học viên thanh nhạc", "objective": "Cung cấp checklist thực hành", "must_cover": ["khởi động cơ thể", "khởi động giọng"]},
+      "seo_title": "Checklist luyện thanh trước khi hát", "meta_description": "Checklist ngắn giúp học viên khởi động cơ thể, hơi thở và giọng hát theo thứ tự trước mỗi buổi luyện.",
+      "content": "# Checklist luyện thanh trước khi hát\n\nChecklist luyện thanh này giúp bạn chuẩn bị cơ thể và giọng theo một trình tự dễ nhớ.\n\n## Khởi động cơ thể\n\nThả lỏng vai, hàm và cổ trong phạm vi thoải mái.\n\n## Khởi động giọng\n\nBắt đầu ở âm vực dễ chịu, tăng dần cường độ và dừng khi đau.\n\n## Kiểm tra sau buổi tập\n\nGhi lại bài tập phù hợp để điều chỉnh lần sau.",
+      "expected_labels": [], "human_reviews": []
+    },
+    {
+      "case_id": "seo-03-good-commercial",
+      "brief": {"topic": "So sánh học hát online và tại lớp", "keywords": ["học hát online hay tại lớp"], "primary_keyword": "học hát online hay tại lớp", "search_intent": "commercial", "audience": "Người đang chọn khóa học", "objective": "Giúp chọn hình thức phù hợp", "must_cover": ["chi phí", "phản hồi giáo viên"]},
+      "seo_title": "Học hát online hay tại lớp: Cách chọn", "meta_description": "So sánh chi phí, mức độ linh hoạt và phản hồi giáo viên để chọn học hát online hay tại lớp theo nhu cầu.",
+      "content": "# Học hát online hay tại lớp: Cách chọn\n\nViệc chọn học hát online hay tại lớp phụ thuộc lịch học, ngân sách và mức phản hồi bạn cần.\n\n## Chi phí và thời gian\n\nOnline thường linh hoạt hơn, còn tại lớp có thêm thời gian di chuyển.\n\n## Phản hồi của giáo viên\n\nTại lớp thuận lợi khi cần quan sát trực tiếp; online phù hợp nếu thiết bị và đường truyền ổn định.\n\n## Chọn theo nhu cầu\n\nHãy học thử và so sánh chất lượng phản hồi trước khi đăng ký dài hạn.",
+      "expected_labels": [], "human_reviews": []
+    },
+    {
+      "case_id": "seo-04-good-transactional",
+      "brief": {"topic": "Đăng ký học thử thanh nhạc", "keywords": ["đăng ký học thử thanh nhạc"], "primary_keyword": "đăng ký học thử thanh nhạc", "search_intent": "transactional", "audience": "Người muốn học thử", "objective": "Giải thích quy trình đăng ký", "must_cover": ["thông tin cần chuẩn bị", "đặt lịch"]},
+      "seo_title": "Đăng ký học thử thanh nhạc: Quy trình", "meta_description": "Xem thông tin cần chuẩn bị, cách chọn khung giờ và các bước đăng ký học thử thanh nhạc.",
+      "content": "# Đăng ký học thử thanh nhạc: Quy trình\n\nBạn có thể đăng ký học thử thanh nhạc sau khi chọn mục tiêu và khung giờ phù hợp.\n\n## Thông tin cần chuẩn bị\n\nChuẩn bị độ tuổi, kinh nghiệm và mục tiêu học.\n\n## Chọn lịch học thử\n\nChọn giờ còn trống, để lại thông tin liên hệ và xác nhận lịch.\n\n## Sau khi đặt lịch\n\nKiểm tra email xác nhận và hướng dẫn chuẩn bị trước buổi học.",
+      "expected_labels": [], "human_reviews": []
+    },
+    {
+      "case_id": "seo-05-good-navigational",
+      "brief": {"topic": "Trang liên hệ trung tâm thanh nhạc", "keywords": ["liên hệ trung tâm thanh nhạc"], "primary_keyword": "liên hệ trung tâm thanh nhạc", "search_intent": "navigational", "audience": "Khách hàng hiện tại", "objective": "Chỉ rõ kênh liên hệ", "must_cover": ["địa chỉ", "giờ làm việc"]},
+      "seo_title": "Liên hệ trung tâm thanh nhạc", "meta_description": "Thông tin địa chỉ, giờ làm việc và các kênh liên hệ chính thức của trung tâm thanh nhạc.",
+      "content": "# Liên hệ trung tâm thanh nhạc\n\nĐây là trang liên hệ trung tâm thanh nhạc với thông tin cần thiết trước khi bạn đến.\n\n## Địa chỉ\n\nVui lòng kiểm tra địa chỉ cơ sở trên xác nhận đặt lịch.\n\n## Giờ làm việc\n\nBộ phận hỗ trợ phản hồi trong giờ làm việc được công bố.\n\n## Kênh hỗ trợ\n\nSử dụng số điện thoại hoặc biểu mẫu liên hệ chính thức.",
+      "expected_labels": [], "human_reviews": []
+    },
+    {
+      "case_id": "seo-06-missing-keyword", "brief": {"topic": "Cách giữ hơi khi hát", "keywords": ["giữ hơi khi hát"], "primary_keyword": "giữ hơi khi hát", "search_intent": "informational", "objective": "Hướng dẫn người mới", "must_cover": []},
+      "seo_title": "Bí quyết cho giọng hát", "meta_description": "Một số gợi ý giúp người mới thực hành giọng hát hằng ngày.", "content": "# Bí quyết cho giọng hát\n\nBài viết chia sẻ một số điều nên chú ý.\n\n## Chuẩn bị\n\nĐứng thoải mái.\n\n## Thực hành\n\nLuyện tập đều đặn.",
+      "expected_labels": ["keyword_usage", "title_issue"], "human_reviews": []
+    },
+    {
+      "case_id": "seo-07-keyword-stuffing", "brief": {"topic": "Cách giữ hơi khi hát", "keywords": ["giữ hơi khi hát"], "primary_keyword": "giữ hơi khi hát", "search_intent": "informational", "objective": "Hướng dẫn người mới", "must_cover": []},
+      "seo_title": "Giữ hơi khi hát cho người mới", "meta_description": "Hướng dẫn giữ hơi khi hát với các bước thực hành cơ bản.", "content": "# Giữ hơi khi hát\n\nGiữ hơi khi hát giữ hơi khi hát giúp bạn giữ hơi khi hát. Giữ hơi khi hát là cách giữ hơi khi hát hiệu quả. Giữ hơi khi hát cần giữ hơi khi hát mỗi ngày.\n\n## Bài tập giữ hơi khi hát\n\nGiữ hơi khi hát giữ hơi khi hát giữ hơi khi hát.\n\n## Lưu ý giữ hơi khi hát\n\nGiữ hơi khi hát và tiếp tục giữ hơi khi hát.",
+      "expected_labels": ["keyword_stuffing"], "human_reviews": []
+    },
+    {
+      "case_id": "seo-08-multiple-h1", "brief": {"topic": "Luyện hơi khi hát", "keywords": ["luyện hơi khi hát"], "search_intent": "informational", "objective": "Hướng dẫn", "must_cover": []},
+      "seo_title": "Luyện hơi khi hát", "meta_description": "Các bước luyện hơi khi hát cho người mới.", "content": "# Luyện hơi khi hát\n\nMở đầu.\n\n# Bài tập khác\n\nNội dung.\n\n## Theo dõi\n\nGhi lại kết quả.",
+      "expected_labels": ["content_structure"], "human_reviews": []
+    },
+    {
+      "case_id": "seo-09-heading-skip", "brief": {"topic": "Luyện thanh cơ bản", "keywords": ["luyện thanh cơ bản"], "search_intent": "informational", "objective": "Hướng dẫn", "must_cover": []},
+      "seo_title": "Luyện thanh cơ bản", "meta_description": "Hướng dẫn luyện thanh cơ bản theo từng bước.", "content": "# Luyện thanh cơ bản\n\nHướng dẫn.\n\n### Bước đầu\n\nThực hành.\n\n## Bước tiếp theo\n\nTheo dõi.",
+      "expected_labels": ["content_structure"], "human_reviews": []
+    },
+    {
+      "case_id": "seo-10-missing-meta", "brief": {"topic": "Mở khẩu hình khi hát", "keywords": ["mở khẩu hình khi hát"], "search_intent": "informational", "objective": "Hướng dẫn", "must_cover": []},
+      "seo_title": "Mở khẩu hình khi hát", "meta_description": "", "content": "# Mở khẩu hình khi hát\n\nCách quan sát khẩu hình.\n\n## Chuẩn bị\n\nDùng gương.\n\n## Thực hành\n\nGiữ hàm thoải mái.",
+      "expected_labels": ["meta_issue"], "human_reviews": []
+    },
+    {
+      "case_id": "seo-11-generic-meta", "brief": {"topic": "Mở khẩu hình khi hát", "keywords": ["mở khẩu hình khi hát"], "search_intent": "informational", "objective": "Hướng dẫn", "must_cover": []},
+      "seo_title": "Mở khẩu hình khi hát", "meta_description": "Blog post about singing", "content": "# Mở khẩu hình khi hát\n\nHướng dẫn thực hành.\n\n## Quan sát\n\nDùng gương.\n\n## Điều chỉnh\n\nGiữ hàm thoải mái.",
+      "expected_labels": ["meta_issue"], "human_reviews": []
+    },
+    {
+      "case_id": "seo-12-duplicate-title", "brief": {"topic": "Luyện giọng tại nhà", "keywords": ["luyện giọng tại nhà"], "search_intent": "informational", "objective": "Hướng dẫn", "must_cover": []},
+      "seo_title": "Luyện giọng tại nhà cho người mới", "meta_description": "Các bước luyện giọng tại nhà theo lịch ngắn.", "content": "# Luyện giọng tại nhà cho người mới\n\nHướng dẫn.\n\n## Chuẩn bị\n\nChọn không gian.\n\n## Lịch tập\n\nTập ngắn.", "existing_project_blogs": [{"seo_title": "Luyện giọng tại nhà cho người mới", "meta_description": "Mô tả khác"}],
+      "expected_labels": ["title_issue", "duplicate_seo_title"], "human_reviews": []
+    },
+    {
+      "case_id": "seo-13-duplicate-meta", "brief": {"topic": "Luyện giọng buổi sáng", "keywords": ["luyện giọng buổi sáng"], "search_intent": "informational", "objective": "Hướng dẫn", "must_cover": []},
+      "seo_title": "Luyện giọng buổi sáng", "meta_description": "Các bước luyện giọng tại nhà theo lịch ngắn.", "content": "# Luyện giọng buổi sáng\n\nHướng dẫn.\n\n## Chuẩn bị\n\nUống nước.\n\n## Lịch tập\n\nTập ngắn.", "existing_project_blogs": [{"seo_title": "Bài khác", "meta_description": "Các bước luyện giọng tại nhà theo lịch ngắn."}],
+      "expected_labels": ["meta_issue", "duplicate_meta_description"], "human_reviews": []
+    },
+    {
+      "case_id": "seo-14-title-mismatch", "brief": {"topic": "Cách lấy hơi khi hát", "keywords": ["lấy hơi khi hát"], "search_intent": "informational", "objective": "Hướng dẫn hơi thở", "must_cover": []},
+      "seo_title": "Chọn micro thu âm tại nhà", "meta_description": "Hướng dẫn chọn micro phù hợp để thu âm tại nhà.", "content": "# Cách lấy hơi khi hát\n\nHướng dẫn lấy hơi.\n\n## Tư thế\n\nĐứng cân bằng.\n\n## Thực hành\n\nHít nhẹ.",
+      "expected_labels": ["title_issue", "meta_issue"], "human_reviews": []
+    },
+    {
+      "case_id": "seo-15-shallow-filler", "brief": {"topic": "Cách hát nốt cao", "keywords": ["hát nốt cao"], "search_intent": "informational", "objective": "Hướng dẫn an toàn", "must_cover": ["khởi động", "dấu hiệu căng giọng"]},
+      "seo_title": "Cách hát nốt cao", "meta_description": "Tìm hiểu cách hát nốt cao cho người mới.", "content": "# Cách hát nốt cao\n\nHát nốt cao rất quan trọng và cần luyện tập.\n\n## Điều cần biết\n\nBạn nên cố gắng.\n\n## Kết luận\n\nHãy luyện tập thường xuyên.",
+      "expected_labels": ["helpful_topic_coverage"], "human_reviews": []
+    },
+    {
+      "case_id": "seo-16-vague-title", "brief": {"topic": "Cách sửa lỗi hát phô", "keywords": ["sửa lỗi hát phô"], "search_intent": "informational", "objective": "Hướng dẫn sửa lỗi", "must_cover": []},
+      "seo_title": "Bạn sẽ bất ngờ với bí mật này", "meta_description": "Các bước nhận biết và sửa lỗi hát phô khi luyện tập.", "content": "# Cách sửa lỗi hát phô\n\nHướng dẫn sửa lỗi hát phô.\n\n## Nhận biết\n\nThu âm để so sánh.\n\n## Điều chỉnh\n\nLuyện từng quãng ngắn.",
+      "expected_labels": ["title_issue"], "human_reviews": []
+    },
+    {
+      "case_id": "seo-17-one-section", "brief": {"topic": "Luyện nhịp khi hát", "keywords": ["luyện nhịp khi hát"], "search_intent": "informational", "objective": "Hướng dẫn", "must_cover": []},
+      "seo_title": "Luyện nhịp khi hát", "meta_description": "Bài tập luyện nhịp khi hát dành cho người mới.", "content": "# Luyện nhịp khi hát\n\nHướng dẫn.\n\n## Bài tập\n\nVỗ tay theo metronome rồi hát từng câu ngắn.",
+      "expected_labels": ["content_structure"], "human_reviews": []
+    },
+    {
+      "case_id": "seo-18-long-paragraph", "brief": {"topic": "Luyện phát âm khi hát", "keywords": ["luyện phát âm khi hát"], "search_intent": "informational", "objective": "Hướng dẫn", "must_cover": []},
+      "seo_title": "Luyện phát âm khi hát", "meta_description": "Bài tập luyện phát âm khi hát với từng âm tiết rõ ràng.", "content": "# Luyện phát âm khi hát\n\nHướng dẫn luyện phát âm khi hát.\n\n## Bài tập đầu tiên\n\n" ,
+      "content_suffix_repeat": "Đọc chậm từng âm tiết và quan sát khẩu hình để giữ lời hát rõ ràng trong phạm vi thoải mái. ",
+      "expected_labels": ["long_paragraph"], "human_reviews": []
+    },
+    {
+      "case_id": "seo-19-missing-required", "brief": {"topic": "Bảo vệ giọng hát", "keywords": ["bảo vệ giọng hát"], "search_intent": "informational", "objective": "Hướng dẫn", "must_cover": ["dấu hiệu cần nghỉ", "khi nào gặp chuyên gia"]},
+      "seo_title": "Bảo vệ giọng hát", "meta_description": "Các thói quen cơ bản giúp bảo vệ giọng hát hằng ngày.", "content": "# Bảo vệ giọng hát\n\nCác thói quen bảo vệ giọng hát.\n\n## Uống nước\n\nDuy trì đủ nước.\n\n## Nghỉ ngơi\n\nSắp xếp thời gian nghỉ.",
+      "expected_labels": ["helpful_topic_coverage"], "human_reviews": []
+    },
+    {
+      "case_id": "seo-20-commercial-mismatch", "brief": {"topic": "So sánh khóa học thanh nhạc", "keywords": ["so sánh khóa học thanh nhạc"], "search_intent": "commercial", "objective": "Giúp chọn khóa học", "must_cover": ["tiêu chí so sánh"]},
+      "seo_title": "So sánh khóa học thanh nhạc", "meta_description": "Tổng quan về thanh nhạc và việc luyện tập.", "content": "# So sánh khóa học thanh nhạc\n\nThanh nhạc là hoạt động thú vị.\n\n## Lịch sử\n\nCon người đã hát từ lâu.\n\n## Cảm hứng\n\nÂm nhạc mang lại cảm xúc.",
+      "expected_labels": ["search_intent_alignment", "helpful_topic_coverage"], "human_reviews": []
+    },
+    {
+      "case_id": "seo-21-transaction-no-action", "brief": {"topic": "Đặt lịch học hát", "keywords": ["đặt lịch học hát"], "search_intent": "transactional", "objective": "Giúp người đọc đặt lịch", "must_cover": ["chọn giờ", "xác nhận"]},
+      "seo_title": "Đặt lịch học hát", "meta_description": "Thông tin tổng quan trước khi đặt lịch học hát.", "content": "# Đặt lịch học hát\n\nHọc hát có nhiều lợi ích.\n\n## Lợi ích\n\nBạn có thể tự tin hơn.\n\n## Trải nghiệm\n\nMỗi người có trải nghiệm khác nhau.",
+      "expected_labels": ["search_intent_alignment", "helpful_topic_coverage"], "human_reviews": []
+    },
+    {
+      "case_id": "seo-22-no-h1", "brief": {"topic": "Cách luyện rung môi", "keywords": ["luyện rung môi"], "search_intent": "informational", "objective": "Hướng dẫn", "must_cover": []},
+      "seo_title": "Cách luyện rung môi", "meta_description": "Hướng dẫn luyện rung môi cho người mới theo các bước ngắn.", "content": "Mở đầu về luyện rung môi.\n\n## Chuẩn bị\n\nGiữ môi thoải mái.\n\n## Thực hành\n\nThổi hơi nhẹ.",
+      "expected_labels": ["content_structure"], "human_reviews": []
+    },
+    {
+      "case_id": "seo-23-keyword-not-prominent", "brief": {"topic": "Cách hát rõ lời", "keywords": ["hát rõ lời"], "primary_keyword": "hát rõ lời", "search_intent": "informational", "objective": "Hướng dẫn", "must_cover": []},
+      "seo_title": "Kỹ thuật phát âm", "meta_description": "Các bài tập phát âm cho người mới luyện giọng.", "content": "# Kỹ thuật phát âm\n\nBài tập cho người mới.\n\n## Khẩu hình\n\nQuan sát bằng gương.\n\n## Thực hành\n\nĐọc từng câu để hát rõ lời hơn.",
+      "expected_labels": ["keyword_usage", "title_issue"], "human_reviews": []
+    },
+    {
+      "case_id": "seo-24-natural-variation", "brief": {"topic": "Kiểm soát hơi thở khi ca hát", "keywords": ["giữ hơi khi hát"], "primary_keyword": "giữ hơi khi hát", "search_intent": "informational", "objective": "Hướng dẫn kiểm soát luồng khí", "must_cover": ["luồng khí ổn định"]},
+      "seo_title": "Kiểm soát hơi thở khi ca hát", "meta_description": "Hướng dẫn người mới duy trì luồng khí ổn định để hoàn thành câu hát thoải mái hơn.", "content": "# Kiểm soát hơi thở khi ca hát\n\nKiểm soát luồng khí giúp câu hát ổn định mà không ép cổ.\n\n## Nhận biết luồng khí\n\nQuan sát cảm giác khi phát âm xì đều.\n\n## Bài tập\n\nLuyện từng câu ngắn và dừng khi thấy căng.",
+      "expected_labels": [], "human_reviews": []
+    },
+    {
+      "case_id": "seo-25-semantic-good-no-exact", "brief": {"topic": "Khắc phục tình trạng hết hơi giữa câu hát", "keywords": ["giữ hơi khi hát"], "primary_keyword": "giữ hơi khi hát", "search_intent": "informational", "objective": "Giúp người mới hoàn thành câu hát", "must_cover": ["nguyên nhân hết hơi", "bài tập"]},
+      "seo_title": "Khắc phục hết hơi giữa câu hát", "meta_description": "Nhận biết nguyên nhân hết hơi và luyện phân phối luồng khí để hoàn thành câu hát ổn định hơn.", "content": "# Khắc phục hết hơi giữa câu hát\n\nHết hơi giữa câu thường liên quan đến cách lấy và phân phối luồng khí.\n\n## Nguyên nhân thường gặp\n\nBạn có thể hít quá nhiều hoặc xả khí quá nhanh ở đầu câu.\n\n## Bài tập phân phối khí\n\nĐọc lời theo nhịp, đánh dấu chỗ lấy hơi và hát từng câu ngắn.\n\n## Tự kiểm tra\n\nThu âm để so sánh độ ổn định giữa các lần tập.",
+      "expected_labels": [], "human_reviews": []
+    }
+  ]
+}

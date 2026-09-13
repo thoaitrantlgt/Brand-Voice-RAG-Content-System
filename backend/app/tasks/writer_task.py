@@ -31,6 +31,8 @@ class WriterTask(ITask):
                 "- Do not use forbidden words; use the required replacements.\n"
                 "- Do NOT return JSON.\n"
                 "- Use clear H2 and H3 sections.\n"
+                "- Satisfy the search intent stated in the brief and answer the main need early.\n"
+                "- Use the primary keyword naturally where it improves clarity; never target a keyword density.\n"
                 "- Ground factual and technical claims in the retrieved project knowledge.\n"
                 "- If the retrieved knowledge does not support a detail, omit it instead of guessing.\n"
             ),

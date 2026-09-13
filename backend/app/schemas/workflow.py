@@ -20,6 +20,11 @@ class ContentBrief(BaseModel):
     target_length: int = Field(default=800, ge=300, le=3000)
     profile_id: str | None = None
     use_web_search: bool = False
+    primary_keyword: str | None = Field(default=None, max_length=150)
+    search_intent: Literal[
+        "auto", "informational", "commercial", "navigational", "transactional"
+    ] = "auto"
+    seo_research_enabled: bool = False
 
     @field_validator("keywords", "must_cover", "must_avoid")
     @classmethod

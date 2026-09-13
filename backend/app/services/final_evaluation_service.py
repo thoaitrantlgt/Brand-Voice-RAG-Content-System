@@ -37,6 +37,12 @@ class FinalEvaluationService:
         }
         if not self.settings.FINAL_JUDGE_ENABLED:
             dimensions = self._fallback_dimensions(scores, quality_report)
+            annotations, _ = self._normalize_annotations(
+                (quality_report.get("seo_evaluation") or {}).get("annotations"),
+                content,
+                scores,
+                quality_report,
+            )
             return {
                 **base,
                 "status": "disabled",
@@ -44,7 +50,7 @@ class FinalEvaluationService:
                 "passed": bool(quality_report.get("passed")),
                 "summary": "Final model evaluation is disabled.",
                 "dimensions": dimensions,
-                "annotations": [],
+                "annotations": annotations,
             }
 
         try:
@@ -61,8 +67,24 @@ class FinalEvaluationService:
                 if item.get("score") is not None
             }
             annotations, unmapped = self._normalize_annotations(
-                payload.get("annotations"), content, annotation_scores
+                payload.get("annotations"),
+                content,
+                annotation_scores,
+                quality_report,
             )
+            seo_annotations, seo_unmapped = self._normalize_annotations(
+                (quality_report.get("seo_evaluation") or {}).get("annotations"),
+                content,
+                annotation_scores,
+                quality_report,
+            )
+            seen = {(item["start"], item["end"], item["metric"]) for item in annotations}
+            annotations.extend(
+                item
+                for item in seo_annotations
+                if (item["start"], item["end"], item["metric"]) not in seen
+            )
+            annotations.sort(key=lambda item: int(item["start"]))
             return {
                 **base,
                 "overall_score": self._overall_score(dimensions),
@@ -70,11 +92,17 @@ class FinalEvaluationService:
                 "summary": str(payload.get("summary") or "Đã đánh giá bài viết cuối cùng."),
                 "dimensions": dimensions,
                 "annotations": annotations,
-                "unmapped_annotation_count": unmapped,
+                "unmapped_annotation_count": unmapped + seo_unmapped,
             }
         except Exception as exc:
             logger.warning("Final model evaluation failed | error={}", exc)
             dimensions = self._fallback_dimensions(scores, quality_report)
+            annotations, _ = self._normalize_annotations(
+                (quality_report.get("seo_evaluation") or {}).get("annotations"),
+                content,
+                scores,
+                quality_report,
+            )
             return {
                 **base,
                 "status": "error",
@@ -82,7 +110,7 @@ class FinalEvaluationService:
                 "passed": bool(quality_report.get("passed")),
                 "summary": "Không thể chạy model đánh giá cuối cùng.",
                 "dimensions": dimensions,
-                "annotations": [],
+                "annotations": annotations,
                 "error": str(exc),
             }
 
@@ -145,7 +173,11 @@ class FinalEvaluationService:
 
     @staticmethod
     def _overall_score(dimensions: list[dict[str, Any]]) -> int:
-        values = [int(item["score"]) for item in dimensions if item.get("score") is not None]
+        values = [
+            int(item["score"])
+            for item in dimensions
+            if item.get("score") is not None and item.get("included_in_overall", True)
+        ]
         return round(mean(values)) if values else 0
 
     def _build_prompt(
@@ -180,11 +212,18 @@ class FinalEvaluationService:
                 "style": "Hard gate >=80; deterministic style, structure và readability.",
                 "fingerprint": "Hard gate >=60; sentence rhythm, vocabulary fingerprint và perspective.",
                 "persona": "Informational only; không phải hard gate hiện tại.",
+                "seo": (
+                    "Content SEO Readiness V2 informational >=75; search intent satisfaction, "
+                    "helpful completeness, information gain, evidence/trust, accurate title/snippet, "
+                    "semantic topic coverage and scannable structure. Exact keyword matching is not required. "
+                    "Không dự đoán thứ hạng và không tính vào overall score."
+                ),
             },
             "hard_gate_passed": bool(quality_report.get("passed")),
             "violations": quality_report.get("violations") or [],
             "profile_evaluation": quality_report.get("profile_evaluation") or {},
             "score_breakdown": quality_report.get("score_breakdown") or {},
+            "seo_evaluation": quality_report.get("seo_evaluation") or {},
             "profile": profile_summary,
         }
         metric_names = list(scores)
@@ -271,8 +310,9 @@ class FinalEvaluationService:
         dimensions = []
         for metric, score in scores.items():
             detail = details.get(metric) or {}
+            contract = self._metric_contract(metric, quality_report)
             reason = str(detail.get("reason") or "").strip() or self._fallback_reason(
-                metric, score
+                metric, score, quality_report
             )
             if score == 100:
                 reason = (
@@ -282,11 +322,12 @@ class FinalEvaluationService:
             dimensions.append({
                 "metric": metric,
                 "score": score,
-                "threshold": self._threshold(metric),
-                "gated": self._threshold(metric) is not None,
+                "threshold": contract["threshold"],
+                "gated": contract["gated"],
+                "included_in_overall": contract["included_in_overall"],
                 "passed": (
-                    score >= self._threshold(metric)
-                    if self._threshold(metric) is not None
+                    score >= contract["threshold"]
+                    if contract["threshold"] is not None
                     else None
                 ),
                 "reason": reason,
@@ -429,10 +470,15 @@ class FinalEvaluationService:
             "style": "Style và cấu trúc",
             "fingerprint": "Writing fingerprint",
             "persona": "Mức độ phù hợp persona",
+            "seo": "SEO Readiness",
         }.get(metric, metric.replace("_", " ").title())
 
     def _normalize_annotations(
-        self, raw: Any, content: str, scores: dict[str, int]
+        self,
+        raw: Any,
+        content: str,
+        scores: dict[str, int],
+        quality_report: dict[str, Any] | None = None,
     ) -> tuple[list[dict[str, Any]], int]:
         if not isinstance(raw, list):
             return [], 0
@@ -449,7 +495,8 @@ class FinalEvaluationService:
                 continue
             if scores[metric] >= 100:
                 continue
-            threshold = self._threshold(metric)
+            contract = self._metric_contract(metric, quality_report)
+            threshold = contract["threshold"]
             start = content.find(quote)
             if start < 0:
                 start = content.casefold().find(quote.casefold())
@@ -461,7 +508,7 @@ class FinalEvaluationService:
                 continue
             occupied.append((start, end))
             requested_severity = str(item.get("severity") or "warning").casefold()
-            if threshold is not None and scores[metric] < threshold:
+            if contract["gated"] and threshold is not None and scores[metric] < threshold:
                 severity = "error"
             elif requested_severity == "info":
                 severity = "info"
@@ -496,15 +543,17 @@ class FinalEvaluationService:
     ) -> list[dict[str, Any]]:
         dimensions = []
         for metric, score in scores.items():
-            reason = self._fallback_reason(metric, score)
+            reason = self._fallback_reason(metric, score, quality_report)
+            contract = self._metric_contract(metric, quality_report)
             dimensions.append({
                 "metric": metric,
                 "score": score,
-                "threshold": self._threshold(metric),
-                "gated": self._threshold(metric) is not None,
+                "threshold": contract["threshold"],
+                "gated": contract["gated"],
+                "included_in_overall": contract["included_in_overall"],
                 "passed": (
-                    score >= self._threshold(metric)
-                    if self._threshold(metric) is not None
+                    score >= contract["threshold"]
+                    if contract["threshold"] is not None
                     else None
                 ),
                 "reason": reason,
@@ -520,14 +569,39 @@ class FinalEvaluationService:
 
     @staticmethod
     def _threshold(metric: str) -> int | None:
-        if metric == "persona":
-            return None
-        return 60 if metric == "fingerprint" else 80
+        return FinalEvaluationService._metric_contract(metric)["threshold"]
 
     @staticmethod
-    def _fallback_reason(metric: str, score: int) -> str:
-        threshold = FinalEvaluationService._threshold(metric)
-        if threshold is None:
+    def _metric_contract(
+        metric: str, quality_report: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
+        if metric == "persona":
+            return {"threshold": None, "gated": False, "included_in_overall": True}
+        if metric == "seo":
+            seo = (quality_report or {}).get("seo_evaluation") or {}
+            return {
+                "threshold": int(seo.get("threshold", 75)),
+                "gated": bool(seo.get("gated", False)),
+                "included_in_overall": bool(seo.get("included_in_overall", False)),
+            }
+        return {
+            "threshold": 60 if metric == "fingerprint" else 80,
+            "gated": True,
+            "included_in_overall": True,
+        }
+
+    @staticmethod
+    def _fallback_reason(
+        metric: str,
+        score: int,
+        quality_report: dict[str, Any] | None = None,
+    ) -> str:
+        contract = FinalEvaluationService._metric_contract(metric, quality_report)
+        threshold = contract["threshold"]
+        if not contract["gated"]:
+            if metric == "seo":
+                state = "đạt mức tham khảo" if score >= 75 else "cần cải thiện"
+                return f"SEO Readiness {state} ({score}/100); metric này không chặn quality gate và không dự đoán thứ hạng."
             return f"Metric {metric} mang tính tham khảo và hiện không chặn quality gate ({score}/100)."
         state = "đạt ngưỡng" if score >= threshold else "chưa đạt ngưỡng"
         return f"Metric {metric} {state} theo quality gate deterministic ({score}/100)."

@@ -5,6 +5,87 @@ from app.core.config import AIProvider, Settings
 from app.services.final_evaluation_service import FinalEvaluationService
 
 
+def test_seo_is_informational_and_excluded_from_overall_score():
+    service = FinalEvaluationService(Settings(FINAL_JUDGE_ENABLED=False))
+    result = service.evaluate(
+        content="# Article\n\nBody",
+        brief={},
+        quality_report={
+            "passed": True,
+            "dimension_scores": {
+                "brand": 80,
+                "style": 80,
+                "fingerprint": 60,
+                "persona": 80,
+                "seo": 10,
+            },
+        },
+    )
+
+    seo = next(item for item in result["dimensions"] if item["metric"] == "seo")
+    assert seo["gated"] is False
+    assert seo["included_in_overall"] is False
+    assert seo["threshold"] == 75
+    assert result["overall_score"] == 75
+
+
+def test_disabled_evaluator_describes_enabled_seo_gate_consistently():
+    quality_report = {
+        "passed": False,
+        "dimension_scores": {
+            "brand": 90,
+            "style": 90,
+            "fingerprint": 80,
+            "persona": 80,
+            "seo": 60,
+        },
+        "seo_evaluation": {
+            "score": 60,
+            "threshold": 75,
+            "gated": True,
+            "included_in_overall": False,
+            "annotations": [],
+        },
+    }
+
+    result = FinalEvaluationService(Settings(FINAL_JUDGE_ENABLED=False)).evaluate(
+        content="# Topic\n\nBody",
+        brief={"topic": "Topic"},
+        quality_report=quality_report,
+    )
+
+    seo = next(item for item in result["dimensions"] if item["metric"] == "seo")
+    assert seo["gated"] is True
+    assert "chưa đạt ngưỡng" in seo["reason"]
+    assert "không chặn" not in seo["reason"]
+
+
+def test_deterministic_seo_annotation_survives_when_final_judge_is_disabled():
+    content = "# Article\n\nThis paragraph repeats the main keyword twice."
+    result = FinalEvaluationService(Settings(FINAL_JUDGE_ENABLED=False)).evaluate(
+        content=content,
+        brief={},
+        quality_report={
+            "passed": True,
+            "dimension_scores": {"brand": 90, "seo": 60},
+            "seo_evaluation": {
+                "annotations": [
+                    {
+                        "quote": "repeats the main keyword twice",
+                        "metric": "seo",
+                        "severity": "warning",
+                        "reason": "Repeated phrase.",
+                        "suggestion": "Rewrite naturally.",
+                    }
+                ]
+            },
+        },
+    )
+
+    assert result["annotations"][0]["metric"] == "seo"
+    assert result["annotations"][0]["line"] == 3
+
+
 class FakeLLM:
     def __init__(self, response: str):
         self.response = response

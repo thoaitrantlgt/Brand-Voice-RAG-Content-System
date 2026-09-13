@@ -20,12 +20,14 @@ class PlannerTask(ITask):
         return Task(
             description=(
                 "Tao 1 ban draft blog cho cac tu khoa chinh: {keywords}\n\n"
+                "SEO brief:\n{seo_context}\n\n"
                 "Truoc khi lap draft, hay tim thong tin lien quan trong tai lieu nguoi dung upload neu co tool Knowledge Base. "
                 "Neu co tool Web Search, hay dung web de cap nhat thong tin hien tai. "
                 "Khong yeu cau nguoi dung cung cap ngach hoac chuyen muc.\n\n"
                 "Draft phai co:\n"
                 "- Tieu de bai viet ro rang.\n"
                 "- SEO title ngan.\n"
+                "- SEO title mo ta dung noi dung va search intent; khong lap tu khoa may moc.\n"
                 "- Outline de nguoi dung feedback truoc khi viet, gom cac de muc H2 va cac gach dau dong ben duoi moi de muc.\n\n"
                 "Yeu cau: Tra ve dung format JSON, khong giai thich them."
             ),

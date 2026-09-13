@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import inspect
+import re
 from collections.abc import Awaitable, Callable
 from typing import Any
 
@@ -22,6 +23,9 @@ class WorkflowJobHandlers:
         profile_trainer: Callable[[str, dict[str, Any]], Awaitable[dict[str, Any]]] | None = None,
         brand_voice_service: Any | None = None,
         final_evaluator: Any | None = None,
+        seo_evaluator: Any | None = None,
+        seo_research_enabled: bool = False,
+        existing_blogs_provider: Callable[[str], list[dict[str, Any]]] | None = None,
     ):
         self.content_service = content_service
         self.runs = runs
@@ -30,6 +34,9 @@ class WorkflowJobHandlers:
         self.profile_trainer = profile_trainer
         self.brand_voice_service = brand_voice_service
         self.final_evaluator = final_evaluator
+        self.seo_evaluator = seo_evaluator
+        self.seo_research_enabled = seo_research_enabled
+        self.existing_blogs_provider = existing_blogs_provider
 
     async def handle(self, job: dict[str, Any]) -> dict[str, Any]:
         if job["job_type"] == "plan":
@@ -49,8 +56,19 @@ class WorkflowJobHandlers:
         brief = run["brief"]
         result = await self.content_service.generate_titles(
             brief["keywords"],
-            use_web_search=brief.get("use_web_search", False),
+            use_web_search=(
+                brief.get("use_web_search", False)
+                or brief.get("seo_research_enabled", False)
+                or self.seo_research_enabled
+            ),
             project_id=run["project_id"],
+            seo_context=(
+                f"Primary keyword: {brief.get('primary_keyword') or brief['keywords'][0]}\n"
+                f"Search intent: {brief.get('search_intent', 'auto')}\n"
+                f"Topic: {brief.get('topic', '')}\n"
+                f"Audience: {brief.get('audience', '')}\n"
+                f"Objective: {brief.get('objective', '')}"
+            ),
         )
         plans = result.get("titles") or []
         if not plans:
@@ -61,6 +79,7 @@ class WorkflowJobHandlers:
             plan["title"],
             plan.get("seo_title") or plan["title"],
             plan.get("outline") or [],
+            seo_research=result.get("seo_research"),
         )
         return {"run_id": run["run_id"], "status": updated["status"]}
 
@@ -69,11 +88,17 @@ class WorkflowJobHandlers:
         self.runs.begin_generation(run["run_id"])
         run = self._required_run(run["run_id"])
         brief = run["brief"]
+        planner_research = (run.get("quality_report") or {}).get("seo_research") or {}
+        use_web_search = bool(
+            brief.get("use_web_search", False)
+            or brief.get("seo_research_enabled", False)
+            or self.seo_research_enabled
+        )
         result = await self.content_service.generate_content(
             keywords=brief["keywords"],
             selected_title=run["planned_title"] or brief["topic"],
             outline=run["outline"],
-            use_web_search=brief.get("use_web_search", False),
+            use_web_search=use_web_search,
             project_id=run["project_id"],
             profile_id=run["profile_id"],
             brief_context=(
@@ -83,18 +108,37 @@ class WorkflowJobHandlers:
                 f"Target length: {brief.get('target_length', 800)} words\n"
                 f"Must cover: {', '.join(brief.get('must_cover') or [])}\n"
                 f"Must avoid: {', '.join(brief.get('must_avoid') or [])}"
+                f"\nPrimary keyword: {brief.get('primary_keyword') or brief['keywords'][0]}"
+                f"\nSearch intent: {brief.get('search_intent', 'auto')}"
             ),
         )
         content = result["optimized_content"]
+        seo_package = {
+            "seo_title": result.get("seo_title") or result.get("title_tag") or run.get("planned_seo_title"),
+            "meta_description": result.get("meta_description"),
+            "suggested_slug": result.get("suggested_slug"),
+        }
         style_report = result.get("style_report") or {}
         citations = list(result.get("citations") or [])
         retrieved_contexts = list(result.get("retrieved_contexts") or [])
+        seo_research = self._merge_research_reports(
+            planner_research,
+            result.get("seo_research") or {},
+        )
         self.runs.replace_citations(run["run_id"], citations)
         self.runs.replace_retrieval_contexts(run["run_id"], retrieved_contexts)
         rewrite_count = 0
 
         while True:
-            quality_report = self._evaluate(content, style_report, run)
+            quality_report = self._evaluate(
+                content,
+                style_report,
+                run,
+                seo_title=seo_package.get("seo_title"),
+                meta_description=seo_package.get("meta_description"),
+                suggested_slug=seo_package.get("suggested_slug"),
+            )
+            quality_report["seo_research"] = seo_research
             terminal_attempt = quality_report["passed"] or rewrite_count >= 2
             if terminal_attempt and self.final_evaluator is not None:
                 stored = (
@@ -121,6 +165,20 @@ class WorkflowJobHandlers:
                 profile_id=run["profile_id"],
             )
             content = rewritten["rewritten_text"]
+            build_package = getattr(self.content_service, "build_seo_package", None)
+            if callable(build_package):
+                seo_package = build_package(
+                    content,
+                    seo_title=str(
+                        self._extract_h1(content)
+                        or seo_package.get("seo_title")
+                        or ""
+                    ),
+                    primary_keyword=str(
+                        brief.get("primary_keyword") or brief["keywords"][0]
+                    ),
+                    search_intent=str(brief.get("search_intent", "auto")),
+                )
             style_report = {
                 **style_report,
                 **(rewritten.get("style_report") or {}),
@@ -132,8 +190,8 @@ class WorkflowJobHandlers:
             content,
             quality_report,
             rewrite_count,
-            result.get("title_tag"),
-            result.get("meta_description"),
+            self._extract_h1(content) or result.get("title_tag"),
+            seo_package.get("meta_description"),
         )
         return {
             "run_id": run["run_id"],
@@ -142,7 +200,14 @@ class WorkflowJobHandlers:
         }
 
     def _evaluate(
-        self, content: str, style_report: dict[str, Any], run: dict[str, Any]
+        self,
+        content: str,
+        style_report: dict[str, Any],
+        run: dict[str, Any],
+        *,
+        seo_title: str | None = None,
+        meta_description: str | None = None,
+        suggested_slug: str | None = None,
     ) -> dict[str, Any]:
         provided = style_report.get("dimension_scores") or {}
         style_score = int(style_report.get("style_score", provided.get("style", 0)))
@@ -223,7 +288,86 @@ class WorkflowJobHandlers:
         )
         report["profile_evaluation"] = profile_evaluation
         report["score_breakdown"] = score_breakdown
+        if self.seo_evaluator is not None:
+            seo_evaluation = self.seo_evaluator.evaluate(
+                content=content,
+                brief=run["brief"],
+                seo_title=seo_title,
+                meta_description=meta_description,
+                suggested_slug=suggested_slug,
+                existing_project_blogs=(
+                    self.existing_blogs_provider(run["project_id"])
+                    if self.existing_blogs_provider is not None
+                    else []
+                ),
+            )
+            seo_score = int(seo_evaluation["score"])
+            report["dimension_scores"]["seo"] = seo_score
+            report["seo_evaluation"] = seo_evaluation
+            report["score_breakdown"]["seo"] = [
+                {
+                    "criterion": name.replace("_", " ").title(),
+                    "score": int(value),
+                }
+                for name, value in seo_evaluation.get("subscores", {}).items()
+            ]
+            if seo_evaluation.get("gated") and seo_score < int(seo_evaluation["threshold"]):
+                body_codes = {
+                    "search_intent_satisfaction",
+                    "helpful_completeness",
+                    "information_gain_originality",
+                    "evidence_expertise_trust",
+                    "semantic_topic_coverage",
+                    "keyword_usage",
+                    "keyword_repetition",
+                    "content_structure",
+                }
+                report["violations"].extend(
+                    {"code": f"seo_{check['code']}", "recommendation": check.get("recommendation")}
+                    for check in seo_evaluation.get("checks", [])
+                    if check.get("status") == "needs_attention"
+                    and check.get("code") in body_codes
+                )
+                report["violations"].append(
+                    {
+                        "code": "seo_below_threshold",
+                        "actual": seo_score,
+                        "threshold": int(seo_evaluation["threshold"]),
+                    }
+                )
+                report["passed"] = False
         return report
+
+    @staticmethod
+    def _extract_h1(content: str) -> str | None:
+        match = re.search(r"(?m)^#\s+(.+?)\s*$", content)
+        return match.group(1).strip() if match else None
+
+    @staticmethod
+    def _merge_research_reports(*reports: dict[str, Any]) -> dict[str, list[Any]]:
+        queries: list[str] = []
+        sources: list[dict[str, Any]] = []
+        urls: list[str] = []
+        seen_sources: set[str] = set()
+        for report in reports:
+            for query in report.get("query_variations") or []:
+                value = str(query).strip()
+                if value and value not in queries:
+                    queries.append(value)
+            for source in report.get("sources") or []:
+                if not isinstance(source, dict):
+                    continue
+                url = str(source.get("url") or "").strip()
+                if not url or url in seen_sources:
+                    continue
+                sources.append(dict(source))
+                seen_sources.add(url)
+                urls.append(url)
+            for source_url in report.get("source_urls") or []:
+                url = str(source_url).strip()
+                if url and url not in urls:
+                    urls.append(url)
+        return {"query_variations": queries, "sources": sources, "source_urls": urls}
 
     @staticmethod
     def _quality_feedback(violations: list[dict[str, Any]]) -> str:

@@ -1,0 +1,19 @@
+{
+  "discovery_date": "2026-09-12",
+  "discovery_query": "cách giữ hơi khi hát cho người mới",
+  "note": "Manually selected search results, not a measured Google top 10. One URL per domain; backup URLs last.",
+  "excluded_after_extraction_qa": [{"url": "https://thuamviet.com/cam-nang/huong-dan-cach-lay-hoi-truoc-khi-hat", "reason": "Extracted article begins with an unrelated team-producer teaser; excluded before any successful model call."}],
+  "urls": [
+    "https://gochek.vn/blogs/news/cach-giu-hoi-khi-hat",
+    "https://unica.vn/blog/cach-lay-hoi-khi-hat",
+    "https://vn.yamaha.com/vi/musical-instruments/pianos/news/2023/giu-hoi-luyen-hat.html",
+    "https://canhacnhe.com/cach-hat-khong-bi-hut-hoi-chi-tiet-cho-nguoi-moi",
+    "https://duytieumusic.com/hoi-tho-trong-thanh-nhac",
+    "https://www.yokara.com/news/lam-sao-de-hat-khong-bi-hut-hoi/",
+    "https://adammuzic.vn/hut-hoi-khi-hat/3/",
+    "https://vietthuong.edu.vn/cach-giu-hoi-khi-hat-kinh-nghiem-hoc-hat-hay.html",
+    "https://edu.pianohouse.vn/4-nguyen-tac-lay-hoi-trong-bai-hat-bai-tap-lay-hoi-khi-hat.html",
+    "https://seami.vn/cac-nguyen-tac-co-ban-cho-nguoi-moi-hoc-hat/",
+    "https://jonathanmpham.com/vi/sang-tao/cach-tap-hat-cho-nguoi-moi-bat-dau/"
+  ]
+}

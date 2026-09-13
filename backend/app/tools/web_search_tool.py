@@ -32,5 +32,5 @@ def create_web_search_tool(settings: Settings) -> SerperDevTool:
     os.environ["SERPER_API_KEY"] = settings.SERPER_API_KEY
     
     return SerperDevTool(
-        n_results=5,
+        n_results=settings.SEO_RESEARCH_TOP_K,
     )
